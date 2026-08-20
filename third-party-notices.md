@@ -1,8 +1,30 @@
 # Third-party notices
 
-No third-party product asset is included in this baseline. Each project records
-the licenses and permitted use of its own fonts, images, software, and other
-external material here or beside the relevant files.
+## Fonts
+
+**Playfair Display** (`menu/assets/fonts/playfair-display-*.woff2`, and the
+git-ignored `website/public/fonts/` copy generated at build time) — SIL Open
+Font License 1.1, © The Playfair Display Project Authors, with Reserved Font
+Name "Playfair Display". Licence text is kept beside the files as
+`OFL-PlayfairDisplay.txt`.
+
+**Manrope** (`menu/assets/fonts/manrope-*.woff2`, and the git-ignored
+`website/public/fonts/` copy generated at build time) — SIL Open Font License
+1.1, © The Manrope Project Authors. Licence text is kept beside the files as
+`OFL-Manrope.txt`.
+
+Playfair Display and Manrope replaced Cormorant Garamond, which is no longer
+shipped.
+
+## Software
+
+**image-size** (`website/vendor/image-size/`) — MIT License, © Aditya Yadav and
+contributors. The vendored top-level runtime comes from version 2.0.2 and
+carries a local security patch for malformed HEIF, ICNS, and JXL box lengths
+while the archived upstream has no patched release. The complete MIT license
+text is kept beside the package as `LICENSE`.
+
+## Repository policy
 
 Parts of the repository-policy and workflow design were adapted from
 [Unicorn Hub](https://github.com/kiaquila/unicorn-hub), retrieved at commit

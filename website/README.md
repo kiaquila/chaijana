@@ -43,6 +43,9 @@ npm run stage:preview  # PR branch: upload an isolated preview version
 ```
 
 The build must complete before either stage command. Cloudflare runs the build
-and deploy commands as separate steps. The one-time Git connection, monorepo
-watch path, and offboarding procedure are documented in
-[`../../docs/stage-hosting.md`](../../docs/stage-hosting.md).
+and deploy commands as separate steps.
+
+The Worker's Git connection still points at `kiaquila/web-design`, so nothing in
+this repository deploys yet. The exact cutover and rollback procedure, the
+current deployment record, and the post-cutover smoke list are in
+[`../docs/migration/cloudflare-cutover.md`](../docs/migration/cloudflare-cutover.md).

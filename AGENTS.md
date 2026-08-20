@@ -1,8 +1,13 @@
 # AGENTS.md — Chaijaná
 
-Chaijaná is an existing restaurant in Buenos Aires. This directory contains its
+Chaijaná is an existing restaurant in Buenos Aires. This repository contains its
 website and multilingual menu as separate deliverables within one coherent
 experience.
+
+Read this file, `README.md`, `.web-design/project.json`, and every document
+under `docs/standards/` before changing the project. The standards come from
+the `kiaquila/web-design` baseline; the rules below tighten them for Chaijaná
+and may never weaken them.
 
 ## Product Identity
 
@@ -38,6 +43,8 @@ confirmation.
   `website/app/globals.css` in the same change and verify their documented
   exception.
 - Preserve all three locales: Spanish, English, and Russian.
+- Never hand-edit a file listed in `.web-design/managed-files.json`. Baseline
+  changes arrive through `npm run sync:web-design` in their own pull request.
 - Treat generated menu HTML and CSS as build artifacts derived from the
   canonical menu source; validate generated results, but do not create a second
   hand-edited source of truth.
@@ -47,10 +54,17 @@ confirmation.
 Run from the repository root:
 
 ```bash
-node scripts/check-repository.mjs
-npm --prefix chaijana/menu run check
-npm --prefix chaijana/website run lint
-npm --prefix chaijana/website test
+npm run preflight       # repository policy, managed-file drift, baseline tests
+npm run project:check   # every check recorded in .web-design/project.json
+```
+
+`npm run project:check` runs exactly what CI runs:
+
+```bash
+npm --prefix menu run check
+npm ci --prefix website
+npm --prefix website run lint
+npm --prefix website test
 ```
 
 For visual changes, also inspect representative mobile and desktop states in all
