@@ -118,7 +118,7 @@ WhatsApp, телефон, почта, Instagram, TikTok, копирайт `© Ka
 ## Как перепроверить
 
 ```bash
-cd chaijana/menu && npm run check
+cd menu && npm run check
 ```
 
 Тесты проверяют, что все 14 разделов и 3 сета на месте, что восстановленные
