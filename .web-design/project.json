@@ -12,19 +12,15 @@
     "check": [
       {
         "name": "project-check-1",
-        "run": "npm --prefix menu run check"
+        "run": "npm run check --prefix menu"
       },
       {
         "name": "project-check-2",
-        "run": "npm ci --prefix website"
+        "run": "npm ci --prefix website && npm run lint --prefix website"
       },
       {
         "name": "project-check-3",
-        "run": "npm --prefix website run lint"
-      },
-      {
-        "name": "project-check-4",
-        "run": "npm --prefix website test"
+        "run": "npm test --prefix website"
       }
     ]
   },
