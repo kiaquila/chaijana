@@ -270,9 +270,21 @@ test("an escaped quoted scalar in a workflow is rejected", () => {
 });
 
 // A backslash inside `run: |` is shell, not a YAML escape, and must not fail.
+// Both legal indicator orders have to be recognized, or a valid body is read
+// as an escaped scalar.
 test("a backslash in a block scalar is left alone", () => {
+  for (const header of ["|", "|-", "|+", "|2", "|2-", "|-2", ">", ">-"]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", `${workflow}      - run: ${header}\n          grep -E "a\\\\.b" file\n          echo "done"\n`);
+      const result = run(root);
+      assert.equal(result.status, 0, `run: ${header}\n${result.stderr}`);
+    });
+  }
+});
+
+test("a quoted backslash inside a comment is not read as a scalar", () => {
   withFixture((root, add) => {
-    add(".github/workflows/ci.yml", `${workflow}      - run: |\n          grep -E "a\\\\.b" file\n          echo "done"\n`);
+    add(".github/workflows/ci.yml", `${workflow}      # grep uses the pattern "a\\\\.b" here\n`);
     const result = run(root);
     assert.equal(result.status, 0, result.stderr);
   });

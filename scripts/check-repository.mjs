@@ -128,11 +128,16 @@ function quotedEscapes(text) {
       if (line.trim() === "" || indent > blockIndent) continue;
       blockIndent = null;
     }
-    if (/:\s*[|>][-+]?\d*\s*$/.test(stripComment(line))) {
+    // A block scalar header carries an optional chomp indicator and an optional
+    // explicit indent, in either legal order: `|`, `|-`, `|2`, `|2-`, `|-2`.
+    const code = stripComment(line);
+    if (/:\s*[|>](?:[-+]\d?|\d[-+]?)?\s*$/.test(code)) {
       blockIndent = indent;
       continue;
     }
-    for (const [, scalar] of line.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
+    // A comment is not a scalar and cannot change what the workflow runs, so
+    // `# grep uses the pattern "a\.b"` must not read as an escaped value.
+    for (const [, scalar] of code.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
       if (scalar.includes("\\")) found.push(scalar);
     }
   }
