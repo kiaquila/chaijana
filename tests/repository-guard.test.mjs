@@ -129,6 +129,25 @@ test("secret-shaped content is rejected", () => {
   });
 });
 
+test("every secret detector is wired up", () => {
+  // Each fixture is assembled at runtime for the same reason as above.
+  const cases = [
+    ["private key", ["-----BEGIN ", "RSA ", "PRIVATE ", "KEY-----"].join("")],
+    ["OpenAI-style API key", ["sk", "-", "a".repeat(40)].join("")],
+    ["Slack token", ["xox", "b-", "1234567890-abcdefghijklmnopqrst"].join("")],
+    ["AWS access key", ["AKIA", "ABCDEFGHIJKLMNOP"].join("")],
+    ["Telegram bot token", ["123456789", ":", "A".repeat(35)].join("")]
+  ];
+  for (const [label, value] of cases) {
+    withFixture((root, add) => {
+      add("website/config.ts", `export const value = "${value}";\n`);
+      const result = run(root);
+      assert.equal(result.status, 1, `${label} should be rejected`);
+      assert.match(result.stderr, new RegExp(`Possible ${label.replace(/[-]/g, "\\$&")}`));
+    });
+  }
+});
+
 test("a personal absolute path is rejected", () => {
   withFixture((root, add) => {
     const personal = ["", "Users", "someone", "projects", "chaijana"].join("/");
@@ -154,6 +173,34 @@ test("an unpinned action is rejected", () => {
     const result = run(root);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /not pinned to a full SHA/);
+  });
+});
+
+// A line-anchored `uses:` pattern walks straight past a flow-style step, so an
+// unpinned action could be smuggled in through alternate YAML syntax.
+test("an unpinned action in a flow-style step is rejected", () => {
+  for (const step of [
+    "      - { uses: actions/checkout@v4 }",
+    "      - {uses: actions/checkout@v4, with: {ref: main}}",
+    "      - { with: { ref: main }, uses: actions/checkout@v4 }"
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
+      const result = run(root);
+      assert.equal(result.status, 1, `${step} should be rejected`);
+      assert.match(result.stderr, /not pinned to a full SHA/);
+    });
+  }
+});
+
+test("a pinned action in a flow-style step still passes", () => {
+  withFixture((root, add) => {
+    add(".github/workflows/ci.yml", workflow.replace(
+      /^      - uses:.*$/m,
+      "      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 }"
+    ));
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
   });
 });
 

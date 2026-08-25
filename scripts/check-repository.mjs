@@ -49,8 +49,10 @@ const forbiddenNames = [/^\.DS_Store$/, /^\.env(?:\..+)?$/, /\.(?:key|p12|pfx|pe
 const secrets = [
   ["private key", /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/],
   ["GitHub token", /gh[pousr]_[A-Za-z0-9]{20,}/],
-  ["API key", /sk-[A-Za-z0-9_-]{32,}/],
-  ["AWS access key", /AKIA[0-9A-Z]{16}/]
+  ["OpenAI-style API key", /sk-[A-Za-z0-9_-]{32,}/],
+  ["Slack token", /xox[baprs]-[A-Za-z0-9-]{20,}/],
+  ["AWS access key", /AKIA[0-9A-Z]{16}/],
+  ["Telegram bot token", /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/]
 ];
 const personalPaths = [/\/Users\/[A-Za-z0-9._-]+\//, /\/home\/[A-Za-z0-9._-]+\//, /[A-Za-z]:\\Users\\/];
 
@@ -93,7 +95,10 @@ for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?m
   if (/^permissions:\s*["']?write-all["']?\s*$/m.test(text)) {
     failures.push(`Workflow may not use write-all: ${workflow}`);
   }
-  for (const match of text.matchAll(/^\s*-?\s*uses:\s*["']?([^\s"']+)["']?\s*(?:#.*)?$/gm)) {
+  // `uses:` is matched after a block-sequence dash *or* inside a flow mapping,
+  // because `- { uses: actions/checkout@v4 }` is a valid step that a
+  // line-anchored pattern would walk straight past, leaving it unpinned.
+  for (const match of text.matchAll(/(?:^\s*-?\s*|[{,]\s*)uses:\s*["']?([^\s"',}]+)["']?/gm)) {
     const action = match[1];
     if (action.startsWith("./") || action.startsWith("docker://")) continue;
     const ref = action.slice(action.lastIndexOf("@") + 1);
