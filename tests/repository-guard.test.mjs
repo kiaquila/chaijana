@@ -167,8 +167,9 @@ test("symbolic links are rejected", () => {
   });
 });
 
-// Enumerating step spellings is how the first two attempts leaked, so this
-// covers the shapes that broke them plus the quoting variants around them.
+// Every spelling below is the same step. The guard matches the action
+// reference rather than the key, so the YAML syntax that introduced it does
+// not matter — which is the property these cases exist to hold.
 test("an unpinned action is rejected in every step spelling", () => {
   for (const step of [
     "      - uses: actions/checkout@v4",
@@ -179,7 +180,24 @@ test("an unpinned action is rejected in every step spelling", () => {
     "      - { with: { ref: main }, uses: actions/checkout@v4 }",
     '      - { "uses": actions/checkout@v4 }',
     "      - { 'uses' : actions/checkout@v4 }",
-    '      - { "uses": "actions/checkout@v4" }'
+    '      - { "uses": "actions/checkout@v4" }',
+    "      - ? uses\n        : actions/checkout@v4",
+    "      - uses: actions/checkout@main",
+    "      - uses: google/osv-scanner-action/osv-scanner-action@v2.5.0"
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
+      const result = run(root);
+      assert.equal(result.status, 1, `${step} should be rejected`);
+      assert.match(result.stderr, /not pinned to a full SHA/);
+    });
+  }
+});
+
+test("an action with no ref at all is rejected", () => {
+  for (const step of [
+    "      - uses: actions/checkout",
+    '      - { "uses": "actions/checkout" }'
   ]) {
     withFixture((root, add) => {
       add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
@@ -195,7 +213,8 @@ test("a pinned action passes in the same spellings", () => {
   for (const step of [
     `      - uses: ${pin}`,
     `      - { uses: ${pin} }`,
-    `      - { "uses": "${pin}" }`
+    `      - { "uses": "${pin}" }`,
+    `      - ? uses\n        : ${pin}`
   ]) {
     withFixture((root, add) => {
       add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
@@ -205,38 +224,34 @@ test("a pinned action passes in the same spellings", () => {
   }
 });
 
-test("a uses: value the guard cannot read is rejected rather than skipped", () => {
-  for (const [step, pattern] of [
-    ["      - uses:", /Unreadable uses: value/],
-    ["      - uses: *checkout", /Unsupported uses: value/],
-    ["      - { uses: &anchor }", /Unsupported uses: value/]
+test("a local or docker action needs no SHA", () => {
+  for (const step of [
+    "      - uses: ./.github/actions/local",
+    "      - uses: docker://ghcr.io/owner/image@sha256:abc123"
   ]) {
     withFixture((root, add) => {
       add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
       const result = run(root);
-      assert.equal(result.status, 1, `${step} should be rejected`);
-      assert.match(result.stderr, pattern);
+      assert.equal(result.status, 0, `${step}\n${result.stderr}`);
     });
   }
 });
 
-test("prose in a comment is not read as a step", () => {
-  withFixture((root, add) => {
-    add(".github/workflows/ci.yml", workflow.replace(
-      /^      - uses:/m,
-      "      # This job uses: the pinned checkout below, nothing else.\n      - uses:"
-    ));
-    const result = run(root);
-    assert.equal(result.status, 0, result.stderr);
-  });
-});
-
-test("a key merely ending in uses is not treated as a step", () => {
-  withFixture((root, add) => {
-    add(".github/workflows/ci.yml", `${workflow}        env:\n          reuses: actions/checkout@v4\n`);
-    const result = run(root);
-    assert.equal(result.status, 0, result.stderr);
-  });
+// The other failure direction: a valid workflow must not be rejected because a
+// scalar happens to contain the word "uses:" or an npm-style specifier.
+test("prose and package specs in scalars do not fail a valid workflow", () => {
+  for (const step of [
+    '      - run: echo "This uses: no action"',
+    "      - run: npm i -g pnpm@9",
+    "      - run: npx @scope/pkg@1.2.3 --help",
+    "      # This job uses: the pinned checkout above, nothing else."
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", `${workflow}${step}\n`);
+      const result = run(root);
+      assert.equal(result.status, 0, `${step}\n${result.stderr}`);
+    });
+  }
 });
 
 test("a workflow without top-level permissions is rejected", () => {

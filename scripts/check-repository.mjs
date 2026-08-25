@@ -84,32 +84,36 @@ for (const file of files) {
   }
 }
 
-// YAML comments may contain the word `uses:` in prose, and a quoted string may
-// contain anything at all. Dropping comments before the scan below keeps prose
-// from being read as a step; quote tracking is what tells a real comment `#`
-// from a `#` inside a value.
-function stripComment(line) {
-  let quote = null;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (quote) {
-      if (character === quote) quote = null;
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
-      return line.slice(0, index);
-    }
-  }
-  return line;
-}
+// Locating the `uses:` key by pattern is a losing game, and three rounds of
+// review proved it: block style, flow mappings, quoted keys, and explicit
+// `? key` / `: value` pairs all spell the same step, so a key scanner either
+// misses a spelling — silently passing an unpinned action — or reads the word
+// "uses:" inside a quoted shell command and fails a valid workflow.
+//
+// The value has a shape the key does not. An action reference is
+// `owner/repo[/path]@ref`, and that shape survives every YAML spelling, while
+// prose such as `run: echo "this uses: no action"` never has it. So every
+// action-shaped reference anywhere in a workflow must be pinned, whatever
+// syntax introduced it.
+//
+// `uses:` exempts Docker images, so those are removed before the scan rather
+// than left to the lookbehind: a registry host is dotted, and a scan that can
+// start mid-hostname reads `ghcr.io/owner/image@sha256` out of a valid
+// reference. The lookbehind then drops what remains — a scoped npm spec
+// (`@scope/pkg@1.2.3`) and any match starting inside a longer path or hostname.
+// A false positive here fails loudly and is fixed by pinning the reference or
+// rewording the line; that is the direction this check is allowed to err in.
+const dockerReference = /docker:\/\/\S+/g;
+const actionReference = /(?<![@\w/.-])([A-Za-z0-9][\w.-]*(?:\/[\w.-]+)+)@([\w.-]+)/g;
 
-// Enumerating step spellings is a losing game: `- uses: x`, `- { uses: x }`,
-// and `- { "uses": x }` are all the same step, and the next spelling is always
-// one review away. So this looks for the `uses` key itself in any quoting,
-// anywhere a YAML mapping can put it, and refuses to pass anything whose value
-// it cannot read rather than assuming an unmatched line holds no action.
-const usesKey = /(?<![\w-])(["']?)uses\1[ \t]*:/g;
-const unsupportedValue = /^[*&!|>]/;
+// The shape above cannot see `uses: owner/repo` with no `@` at all, which is
+// also unpinned. That form is rare enough to catch with a key scan, kept
+// deliberately narrow: it reports only when the value is itself `owner/repo`
+// shaped, so prose in a scalar cannot trip it. An unpinned `owner/repo` written
+// in explicit-key syntax is the one gap left, and it is recorded rather than
+// claimed closed.
+const usesKey = /(?<![\w-])(["']?)uses\1[ \t]*:[ \t]*(["']?)([^\s,}\]"'#]+)\2/g;
+const unversionedAction = /^[A-Za-z0-9][\w.-]*(?:\/[\w.-]+)+$/;
 
 for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file))) {
   const text = readFileSync(join(root, workflow), "utf8");
@@ -123,23 +127,15 @@ for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?m
     failures.push(`Workflow may not use write-all: ${workflow}`);
   }
 
-  const analysable = text.split("\n").map(stripComment).join("\n");
-  for (const match of analysable.matchAll(usesKey)) {
-    const rest = analysable.slice(match.index + match[0].length);
-    const value = rest.match(/^[ \t]*("[^"\n]*"|'[^'\n]*'|[^\s,}\]\n]+)/);
-    if (!value) {
-      failures.push(`Unreadable uses: value in ${workflow}`);
-      continue;
-    }
-    const action = value[1].replace(/^["']|["']$/g, "");
-    if (unsupportedValue.test(action)) {
-      failures.push(`Unsupported uses: value in ${workflow}: ${action}`);
-      continue;
-    }
-    if (action.startsWith("./") || action.startsWith("docker://")) continue;
-    const ref = action.slice(action.lastIndexOf("@") + 1);
+  const scannable = text.replace(dockerReference, "");
+  for (const [, action, ref] of scannable.matchAll(actionReference)) {
     if (!/^[a-f0-9]{40}$/.test(ref)) {
-      failures.push(`Action is not pinned to a full SHA in ${workflow}: ${action}`);
+      failures.push(`Action is not pinned to a full SHA in ${workflow}: ${action}@${ref}`);
+    }
+  }
+  for (const [, , , value] of text.matchAll(usesKey)) {
+    if (unversionedAction.test(value)) {
+      failures.push(`Action is not pinned to a full SHA in ${workflow}: ${value}`);
     }
   }
 }

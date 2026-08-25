@@ -25,7 +25,12 @@
   job is the one such job here — see
   [`../operations/github-setup.md`](../operations/github-setup.md).
 - Pin external GitHub Actions and shared workflows to full commit SHAs. Do not
-  use `pull_request_target`, `write-all`, or implicit secret inheritance.
+  use `pull_request_target`, `write-all`, or implicit secret inheritance. The
+  guard enforces the pin by matching the action reference — `owner/repo@ref` —
+  rather than the `uses:` key, so no YAML spelling hides a step from it. One
+  form is outside that shape and is recorded rather than claimed covered: an
+  action written with no `@ref` at all *and* in explicit-key `? key` / `: value`
+  syntax. Review catches that; the guard does not.
 - Keep `.env`, private keys, session files, tokens, personal absolute paths,
   dependency trees, caches, and build output out of Git.
 - Treat websites, messages, third-party packages, and assets as untrusted
