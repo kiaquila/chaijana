@@ -84,6 +84,33 @@ for (const file of files) {
   }
 }
 
+// YAML comments may contain the word `uses:` in prose, and a quoted string may
+// contain anything at all. Dropping comments before the scan below keeps prose
+// from being read as a step; quote tracking is what tells a real comment `#`
+// from a `#` inside a value.
+function stripComment(line) {
+  let quote = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
+
+// Enumerating step spellings is a losing game: `- uses: x`, `- { uses: x }`,
+// and `- { "uses": x }` are all the same step, and the next spelling is always
+// one review away. So this looks for the `uses` key itself in any quoting,
+// anywhere a YAML mapping can put it, and refuses to pass anything whose value
+// it cannot read rather than assuming an unmatched line holds no action.
+const usesKey = /(?<![\w-])(["']?)uses\1[ \t]*:/g;
+const unsupportedValue = /^[*&!|>]/;
+
 for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file))) {
   const text = readFileSync(join(root, workflow), "utf8");
   if (/\bpull_request_target\b/.test(text)) {
@@ -95,11 +122,20 @@ for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?m
   if (/^permissions:\s*["']?write-all["']?\s*$/m.test(text)) {
     failures.push(`Workflow may not use write-all: ${workflow}`);
   }
-  // `uses:` is matched after a block-sequence dash *or* inside a flow mapping,
-  // because `- { uses: actions/checkout@v4 }` is a valid step that a
-  // line-anchored pattern would walk straight past, leaving it unpinned.
-  for (const match of text.matchAll(/(?:^\s*-?\s*|[{,]\s*)uses:\s*["']?([^\s"',}]+)["']?/gm)) {
-    const action = match[1];
+
+  const analysable = text.split("\n").map(stripComment).join("\n");
+  for (const match of analysable.matchAll(usesKey)) {
+    const rest = analysable.slice(match.index + match[0].length);
+    const value = rest.match(/^[ \t]*("[^"\n]*"|'[^'\n]*'|[^\s,}\]\n]+)/);
+    if (!value) {
+      failures.push(`Unreadable uses: value in ${workflow}`);
+      continue;
+    }
+    const action = value[1].replace(/^["']|["']$/g, "");
+    if (unsupportedValue.test(action)) {
+      failures.push(`Unsupported uses: value in ${workflow}: ${action}`);
+      continue;
+    }
     if (action.startsWith("./") || action.startsWith("docker://")) continue;
     const ref = action.slice(action.lastIndexOf("@") + 1);
     if (!/^[a-f0-9]{40}$/.test(ref)) {

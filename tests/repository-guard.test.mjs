@@ -167,22 +167,19 @@ test("symbolic links are rejected", () => {
   });
 });
 
-test("an unpinned action is rejected", () => {
-  withFixture((root, add) => {
-    add(".github/workflows/ci.yml", workflow.replace(/@[a-f0-9]{40}/, "@v7"));
-    const result = run(root);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /not pinned to a full SHA/);
-  });
-});
-
-// A line-anchored `uses:` pattern walks straight past a flow-style step, so an
-// unpinned action could be smuggled in through alternate YAML syntax.
-test("an unpinned action in a flow-style step is rejected", () => {
+// Enumerating step spellings is how the first two attempts leaked, so this
+// covers the shapes that broke them plus the quoting variants around them.
+test("an unpinned action is rejected in every step spelling", () => {
   for (const step of [
+    "      - uses: actions/checkout@v4",
+    "      - uses: 'actions/checkout@v4'",
+    '      - uses: "actions/checkout@v4"',
     "      - { uses: actions/checkout@v4 }",
     "      - {uses: actions/checkout@v4, with: {ref: main}}",
-    "      - { with: { ref: main }, uses: actions/checkout@v4 }"
+    "      - { with: { ref: main }, uses: actions/checkout@v4 }",
+    '      - { "uses": actions/checkout@v4 }',
+    "      - { 'uses' : actions/checkout@v4 }",
+    '      - { "uses": "actions/checkout@v4" }'
   ]) {
     withFixture((root, add) => {
       add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
@@ -193,12 +190,50 @@ test("an unpinned action in a flow-style step is rejected", () => {
   }
 });
 
-test("a pinned action in a flow-style step still passes", () => {
+test("a pinned action passes in the same spellings", () => {
+  const pin = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+  for (const step of [
+    `      - uses: ${pin}`,
+    `      - { uses: ${pin} }`,
+    `      - { "uses": "${pin}" }`
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
+      const result = run(root);
+      assert.equal(result.status, 0, `${step}\n${result.stderr}`);
+    });
+  }
+});
+
+test("a uses: value the guard cannot read is rejected rather than skipped", () => {
+  for (const [step, pattern] of [
+    ["      - uses:", /Unreadable uses: value/],
+    ["      - uses: *checkout", /Unsupported uses: value/],
+    ["      - { uses: &anchor }", /Unsupported uses: value/]
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
+      const result = run(root);
+      assert.equal(result.status, 1, `${step} should be rejected`);
+      assert.match(result.stderr, pattern);
+    });
+  }
+});
+
+test("prose in a comment is not read as a step", () => {
   withFixture((root, add) => {
     add(".github/workflows/ci.yml", workflow.replace(
-      /^      - uses:.*$/m,
-      "      - { uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 }"
+      /^      - uses:/m,
+      "      # This job uses: the pinned checkout below, nothing else.\n      - uses:"
     ));
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
+test("a key merely ending in uses is not treated as a step", () => {
+  withFixture((root, add) => {
+    add(".github/workflows/ci.yml", `${workflow}        env:\n          reuses: actions/checkout@v4\n`);
     const result = run(root);
     assert.equal(result.status, 0, result.stderr);
   });
