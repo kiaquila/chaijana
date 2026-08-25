@@ -56,23 +56,47 @@ The eight WOFF2 subsets live once, in `menu/assets/fonts/`, beside
 `OFL-PlayfairDisplay.txt` and `OFL-Manrope.txt`. `website/scripts/sync-menu.mjs`
 copies them into the git-ignored `website/public/fonts/` at build time.
 
-## Repository baseline
+## Project harness
 
-Repository policy, workflows, and the shared standards under `docs/standards/`
-come from the `kiaquila/web-design` baseline. `.web-design/lock.json` pins the
-exact upstream commit, `.web-design/managed-files.json` lists the files the
-baseline owns, and `.web-design/project.json` records this project's profile,
-deployment shape, and real check commands. Managed files are updated only
-through `npm run sync:web-design`, never by hand; see
-[`docs/operations/updates.md`](./docs/operations/updates.md).
+This repository owns its own checks. There is no upstream control plane: no
+release pin, no lockfile of managed files, no manifest, and no automated sync
+workflow. The layout of the harness borrows ideas from the `template/` directory
+of `kiaquila/web-design` — one CI workflow, a dependency-free repository safety
+check, and project checks declared in one place — but it was copied by hand,
+adapted to this project, and is maintained here. `kiaquila/web-design` is a
+reference to read, not a dependency to track. Bringing over a later idea means
+reading that repository, deciding whether the idea helps Chaijaná, and writing
+the change here in a normal pull request.
 
-The pin is currently the provisional `0.1.0-dev` baseline. How it got here, and
-what still has to happen, is recorded in
-[`docs/migration/source-provenance.md`](./docs/migration/source-provenance.md).
+`.github/workflows/ci.yml` is the only CI workflow. It runs three jobs:
+
+| Job | What it does |
+| --- | --- |
+| `project-ci` | The real menu and website checks — build, lint, and tests |
+| `repository-guard` | `scripts/check-repository.mjs` plus its own regression tests |
+| `osv-scan` | OSV dependency advisories across the repository |
+
+`Codex Review` runs alongside them as the AI review gate, and
+`Workers Builds: chaijana` is posted by Cloudflare.
+
+`scripts/check-repository.mjs` is the repository safety check. It has no
+dependencies and reads only what `git ls-files` reports, so a clone and a bare
+CI runner behave identically. It rejects tracked build output, dependency
+trees, `.env` files, private keys, secret-shaped strings, personal absolute
+paths, and symlinks, and it holds every workflow to a full-SHA action pin,
+declared top-level permissions, no `write-all`, and no `pull_request_target`.
+
+There is no aggregate size budget over the built site. `website/` is a
+Vinext/Next application whose build output mixes server and runtime code with
+client assets, so a total-bytes number over that directory measures the wrong
+thing. The size limits that matter are the ones `menu/tests/menu.test.mjs`
+already enforces on the artifacts a guest actually downloads: each generated
+menu HTML file stays under 200 KB and the menu stylesheet under 40 KB.
 
 ```bash
-npm run preflight       # repository policy, managed-file drift, baseline tests
-npm run project:check   # the menu and website checks from .web-design/project.json
+npm run preflight         # repository safety check, harness tests, menu and website checks
+npm run check:project     # just the menu and website checks
+npm run check:repository  # just the repository safety check
 ```
 
 ## Working documents

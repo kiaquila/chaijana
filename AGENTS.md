@@ -4,10 +4,10 @@ Chaijaná is an existing restaurant in Buenos Aires. This repository contains it
 website and multilingual menu as separate deliverables within one coherent
 experience.
 
-Read this file, `README.md`, `.web-design/project.json`, and every document
-under `docs/standards/` before changing the project. The standards come from
-the `kiaquila/web-design` baseline; the rules below tighten them for Chaijaná
-and may never weaken them.
+Read this file, `README.md`, and every document under `docs/standards/` before
+changing the project. Those standards are project-owned: adapted by hand from
+the `kiaquila/web-design` template and maintained here, not synchronised from
+anywhere. The rules below tighten them for Chaijaná and may never weaken them.
 
 ## Product Identity
 
@@ -43,8 +43,9 @@ confirmation.
   `website/app/globals.css` in the same change and verify their documented
   exception.
 - Preserve all three locales: Spanish, English, and Russian.
-- Never hand-edit a file listed in `.web-design/managed-files.json`. Baseline
-  changes arrive through `npm run sync:web-design` in their own pull request.
+- The repository harness — `.github/workflows/ci.yml`, `scripts/`, `tests/`,
+  and `docs/standards/` — is project-owned and edited directly here. Changing
+  it is a normal pull request, and weakening a check needs a stated reason.
 - Treat generated menu HTML and CSS as build artifacts derived from the
   canonical menu source; validate generated results, but do not create a second
   hand-edited source of truth.
@@ -54,18 +55,19 @@ confirmation.
 Run from the repository root:
 
 ```bash
-npm run preflight       # repository policy, managed-file drift, baseline tests
-npm run project:check   # every check recorded in .web-design/project.json
+npm run preflight   # the repository safety check, its tests, then the project checks
 ```
 
-`npm run project:check` runs exactly what CI runs:
+`npm run check:project` runs exactly what the `project-ci` job runs:
 
 ```bash
-npm --prefix menu run check
-npm ci --prefix website
-npm --prefix website run lint
-npm --prefix website test
+npm run check --prefix menu
+npm ci --prefix website && npm run lint --prefix website && npm test --prefix website
 ```
+
+`npm run check:repository` runs what the `repository-guard` job runs. The guard
+scans every tracked file, including its own tests, so a test fixture that needs
+a secret-shaped or personal-path string must assemble it at runtime.
 
 For visual changes, also inspect representative mobile and desktop states in all
 three locales, including the longest menu entries and keyboard focus states.

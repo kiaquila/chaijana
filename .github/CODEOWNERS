@@ -1,7 +1,7 @@
-# Shared baseline trust boundary. Enable required Code Owner review in the ruleset.
+# The repository guard runs from the proposed pull-request tree, so the tree that
+# can weaken it is the tree under review. Requiring Code Owner review on these
+# paths is what keeps that from being a self-approval.
 /.github/ @kiaquila
-/.web-design/ @kiaquila
-/docs/operations/ @kiaquila
 /docs/standards/ @kiaquila
 /scripts/ @kiaquila
 /tests/ @kiaquila

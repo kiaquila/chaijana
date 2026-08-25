@@ -136,8 +136,11 @@ The previous Cloudflare version stays available for the whole procedure.
   bytes that are live today.
 - **Full rollback.** Disconnect `kiaquila/chaijana`, reconnect
   `kiaquila/web-design` with the original settings from the table at the top of
-  this document, and redeploy `main`. Only do this while
-  `kiaquila/web-design#46` is still unmerged and `chaijana/` still exists there.
+  this document, and redeploy `main`. This path is available only while the
+  `chaijana/` tree still exists on `kiaquila/web-design`'s default branch —
+  verified present on 2026-08-25. `kiaquila/web-design#46` has since merged
+  without removing it; once that tree is deleted, the fast rollback to build
+  `1518fbb8-12b1-4be0-a053-920e8c8480ff` is the only rollback left.
 - **After rollback**, re-run the smoke list and confirm the header contract
   above is intact before ending the freeze.
 
