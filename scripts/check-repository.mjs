@@ -181,10 +181,13 @@ for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?m
   if (/\bpull_request_target\b/.test(text)) {
     failures.push(`High-risk pull_request_target trigger in ${workflow}`);
   }
-  if (!/^permissions:\s*(?:\n|$)/m.test(text)) {
+  if (!/^permissions:[ \t]*(?:\n|[^\s#])/m.test(text)) {
     failures.push(`Workflow must declare top-level permissions: ${workflow}`);
   }
-  if (/^permissions:\s*["']?write-all["']?\s*$/m.test(text)) {
+  // Indentation is allowed here on purpose: a job may override the workflow's
+  // permissions, so `write-all` has to be refused wherever it is declared, not
+  // only at the top level.
+  if (/^[ \t]*permissions:[ \t]*["']?write-all["']?[ \t]*$/m.test(text)) {
     failures.push(`Workflow may not use write-all: ${workflow}`);
   }
 

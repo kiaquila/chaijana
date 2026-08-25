@@ -315,6 +315,37 @@ test("a workflow without top-level permissions is rejected", () => {
   });
 });
 
+// A job may override the workflow's permissions, so write-all has to be
+// refused wherever it is declared.
+test("job-level write-all is rejected", () => {
+  for (const declaration of [
+    "    permissions: write-all",
+    '    permissions: "write-all"',
+    "        permissions: write-all"
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(
+        /^  project-ci:$/m,
+        `  project-ci:\n${declaration}`
+      ));
+      const result = run(root);
+      assert.equal(result.status, 1, `${declaration} should be rejected`);
+      assert.match(result.stderr, /may not use write-all/);
+    });
+  }
+});
+
+test("a scalar top-level permissions declaration is accepted", () => {
+  withFixture((root, add) => {
+    add(".github/workflows/ci.yml", workflow.replace(
+      "permissions:\n  contents: read",
+      "permissions: read-all"
+    ));
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
 test("write-all and pull_request_target are rejected", () => {
   withFixture((root, add) => {
     add(".github/workflows/ci.yml", workflow

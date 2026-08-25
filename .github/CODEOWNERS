@@ -2,11 +2,16 @@
 # can weaken it is the tree under review. Requiring Code Owner review on these
 # paths is what keeps that from being a self-approval.
 #
-# package.json is here because it declares the commands CI runs. The guard jobs
-# invoke their scripts directly for the same reason, so neither the workflow nor
-# the guard depends on a script name staying honest.
+# The package manifests are here because they declare the commands CI runs, at
+# both levels: the root scripts, and the menu and website `check`, `lint`, and
+# `test` entries that `check:project` dispatches. Without them a pull request
+# could replace a real check with `true` and watch project-ci go green. The
+# guard jobs additionally invoke their scripts directly, so they do not depend
+# on a script name staying honest either.
 /.github/ @kiaquila
 /docs/standards/ @kiaquila
 /package.json @kiaquila
+/menu/package.json @kiaquila
+/website/package.json @kiaquila
 /scripts/ @kiaquila
 /tests/ @kiaquila
