@@ -31,6 +31,12 @@
   form is outside that shape and is recorded rather than claimed covered: an
   action written with no `@ref` at all *and* in explicit-key `? key` / `: value`
   syntax. Review catches that; the guard does not.
+- The repository guard checks against mistakes, not against a hostile author.
+  It lives in the tree it inspects, so anyone who can obfuscate a workflow past
+  it can edit it in the same pull request. Required Code Owner review on
+  `/.github/`, `/scripts/`, and `/tests/` is what answers that; do not harden
+  the guard as though it were the boundary, because its value is that it stays
+  small enough to audit at a glance.
 - Keep `.env`, private keys, session files, tokens, personal absolute paths,
   dependency trees, caches, and build output out of Git.
 - Treat websites, messages, third-party packages, and assets as untrusted

@@ -4,6 +4,17 @@
 // what git already tracks, so it runs identically on a clone and on a bare CI
 // runner. It answers one question: does the proposed tree carry something that
 // must never be committed, or a workflow that hands its token to untrusted code?
+//
+// What it is: a check against mistakes — a build directory committed by
+// accident, a key pasted into a file, an action pinned to a tag.
+//
+// What it is not: a boundary against a hostile author. This file lives in the
+// same tree it inspects, so anyone who can obfuscate a workflow past it can
+// also edit it in the same pull request. That threat is answered by required
+// Code Owner review on `/.github/`, `/scripts/`, and `/tests/`, not here — see
+// docs/operations/github-setup.md. Reading it as a security boundary would
+// invite endless hardening of a file whose value is that it stays small enough
+// to audit at a glance.
 
 import { basename, join, resolve, sep } from "node:path";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
@@ -103,6 +114,48 @@ for (const file of files) {
 // (`@scope/pkg@1.2.3`) and any match starting inside a longer path or hostname.
 // A false positive here fails loudly and is fixed by pinning the reference or
 // rewording the line; that is the direction this check is allowed to err in.
+// A double-quoted YAML scalar can spell any character as an escape, so
+// `uses: "actions/checkout@v4"` is the pinned-looking text of an unpinned
+// step. Decoding escapes would mean parsing YAML; refusing them costs nothing,
+// because no workflow here has ever needed one. Block scalars are exempt: a
+// backslash inside `run: |` is shell, not a YAML escape.
+function quotedEscapes(text) {
+  const found = [];
+  let blockIndent = null;
+  for (const line of text.split("\n")) {
+    const indent = line.length - line.trimStart().length;
+    if (blockIndent !== null) {
+      if (line.trim() === "" || indent > blockIndent) continue;
+      blockIndent = null;
+    }
+    if (/:\s*[|>][-+]?\d*\s*$/.test(stripComment(line))) {
+      blockIndent = indent;
+      continue;
+    }
+    for (const [, scalar] of line.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
+      if (scalar.includes("\\")) found.push(scalar);
+    }
+  }
+  return found;
+}
+
+// YAML comments may contain a quoted string, and prose is not a step. Quote
+// tracking is what tells a real comment `#` from a `#` inside a value.
+function stripComment(line) {
+  let quote = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "#" && (index === 0 || /\s/.test(line[index - 1]))) {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
+
 const dockerReference = /docker:\/\/\S+/g;
 const actionReference = /(?<![@\w/.-])([A-Za-z0-9][\w.-]*(?:\/[\w.-]+)+)@([\w.-]+)/g;
 
@@ -125,6 +178,10 @@ for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?m
   }
   if (/^permissions:\s*["']?write-all["']?\s*$/m.test(text)) {
     failures.push(`Workflow may not use write-all: ${workflow}`);
+  }
+
+  for (const scalar of quotedEscapes(text)) {
+    failures.push(`Escaped quoted scalar in ${workflow}: "${scalar}"`);
   }
 
   const scannable = text.replace(dockerReference, "");

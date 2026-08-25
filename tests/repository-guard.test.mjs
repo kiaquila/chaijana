@@ -254,6 +254,30 @@ test("prose and package specs in scalars do not fail a valid workflow", () => {
   }
 });
 
+test("an escaped quoted scalar in a workflow is rejected", () => {
+  for (const step of [
+    '      - uses: "actions/checkout\\u0040v4"',
+    '      - uses: "actions/checkout\\x40v4"',
+    '      - { "uses": "actions/checkout\\u00403d3c42e5aac5ba805825da76410c181273ba90b1" }'
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace(/^      - uses:.*$/m, step));
+      const result = run(root);
+      assert.equal(result.status, 1, `${step} should be rejected`);
+      assert.match(result.stderr, /Escaped quoted scalar/);
+    });
+  }
+});
+
+// A backslash inside `run: |` is shell, not a YAML escape, and must not fail.
+test("a backslash in a block scalar is left alone", () => {
+  withFixture((root, add) => {
+    add(".github/workflows/ci.yml", `${workflow}      - run: |\n          grep -E "a\\\\.b" file\n          echo "done"\n`);
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
 test("a workflow without top-level permissions is rejected", () => {
   withFixture((root, add) => {
     add(".github/workflows/ci.yml", workflow.replace("permissions:\n  contents: read\n\n", ""));
