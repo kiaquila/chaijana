@@ -1,9 +1,11 @@
 # Cloudflare cutover and rollback
 
-**Status: not executed. Cloudflare is untouched.** The `chaijana` Worker still
-builds from `kiaquila/web-design`. This document is the prepared procedure; it
-must not be run without explicit, separate authorization from the repository
-owner.
+**Status: connected. The `chaijana` Worker builds from this repository.**
+Observed on 2026-08-25: the first `Workers Builds: chaijana` check run ever to
+appear on a commit here succeeded on pull request #3. Production has not been
+rebuilt from this repository yet — no build has run on `main`, because no commit
+on `main` has touched a watch path since the connection was made. The steps
+below are kept as the record of what was done and as the rollback procedure.
 
 ## Recorded state before cutover
 
@@ -53,6 +55,33 @@ includeSubDomains`, `x-content-type-options: nosniff`, `x-frame-options: DENY`,
 `referrer-policy: strict-origin-when-cross-origin`,
 `cross-origin-opener-policy: same-origin`, and the `permissions-policy` deny
 list. No third-party origin appears in any policy.
+
+## Record after cutover
+
+### Preview build — confirmed
+
+The connection was confirmed empirically rather than from the Cloudflare
+dashboard, by putting a `website/` change on a pull request and watching for the
+check run that only Workers Builds can post.
+
+| Fact | Value |
+| --- | --- |
+| Observed on | 2026-08-25 |
+| Pull request | [`#3`](https://github.com/kiaquila/chaijana/pull/3) |
+| Check run | `Workers Builds: chaijana`, app `cloudflare-workers-and-pages`, success |
+| Cloudflare build ID | `b0562f9a-df65-478e-9c9c-17e05110c517` |
+| Worker version ID | `099bf5de-3583-4e44-8bc0-a5e5a9d6ba82` |
+| Preview URL | `https://099bf5de-chaijana.ks-design.workers.dev` |
+| Preview alias URL | `https://fix-dependabot-cooldown-and-deploy-state-chaijana.ks-design.workers.dev` |
+
+Preview status codes: `/`, `/en`, `/ru`, `/menu/`, `/menu/en`, `/menu/ru` all
+200; `/menu/index.html`, `/menu/en.html`, `/menu/ru.html` all 307; `/nope-404`
+404. The rest of the smoke list below is not yet recorded.
+
+### Production build
+
+Not recorded yet. It runs on the first merge to `main` that touches
+`website/*` or `menu/*`.
 
 ## Cutover procedure
 
