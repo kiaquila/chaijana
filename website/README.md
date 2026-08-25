@@ -45,8 +45,9 @@ npm run stage:preview  # PR branch: upload an isolated preview version
 The build must complete before either stage command. Cloudflare runs the build
 and deploy commands as separate steps.
 
-No Cloudflare Workers Builds check run and no deployment has ever appeared on a
-commit in this repository, so no build from here has been observed. Whether the
-Worker's Git connection has moved off `kiaquila/web-design` is recorded, with
-the cutover and rollback procedure and the post-cutover smoke list, in
+The Worker's Git connection points at this repository. A pull request that
+touches `website/` or `menu/` gets a preview build, and a merge to `main` gets a
+production build; both post a `Workers Builds: chaijana` check run on the head
+commit. The cutover record, the rollback procedure, and the post-cutover smoke
+list are in
 [`../docs/migration/cloudflare-cutover.md`](../docs/migration/cloudflare-cutover.md).
