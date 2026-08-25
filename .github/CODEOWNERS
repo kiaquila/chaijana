@@ -1,5 +1,4 @@
-# This repository's own file, not a managed one, so it can name an owner with
-# rights here. The paths are fixed: every managed path must stay covered.
+# Shared baseline trust boundary. Enable required Code Owner review in the ruleset.
 /.github/ @kiaquila
 /.web-design/ @kiaquila
 /docs/operations/ @kiaquila
