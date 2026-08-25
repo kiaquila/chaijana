@@ -1,7 +1,12 @@
 # The repository guard runs from the proposed pull-request tree, so the tree that
 # can weaken it is the tree under review. Requiring Code Owner review on these
 # paths is what keeps that from being a self-approval.
+#
+# package.json is here because it declares the commands CI runs. The guard jobs
+# invoke their scripts directly for the same reason, so neither the workflow nor
+# the guard depends on a script name staying honest.
 /.github/ @kiaquila
 /docs/standards/ @kiaquila
+/package.json @kiaquila
 /scripts/ @kiaquila
 /tests/ @kiaquila

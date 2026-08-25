@@ -49,13 +49,15 @@ jobs:
         with:
           node-version: "22.18.0"
 
+      # Invoked directly rather than through `npm run`, so this job cannot be
+      # neutered by editing the root package.json in the same pull request.
       # The guard has no dependencies, so there is nothing to install and
       # nothing from the proposed tree runs with more than `contents: read`.
       - name: Check repository safety
-        run: npm run check:repository
+        run: node scripts/check-repository.mjs
 
       - name: Test the repository guard
-        run: npm run test:harness
+        run: node --test tests/*.test.mjs
 
   osv-scan:
     name: osv-scan

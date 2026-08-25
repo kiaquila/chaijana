@@ -282,6 +282,22 @@ test("a backslash in a block scalar is left alone", () => {
   }
 });
 
+// In `run: grep -E "a\\.b" file` the YAML value is a plain scalar and the
+// quotes belong to the shell, so an inline command must stay usable.
+test("shell quoting in an inline command is not read as a YAML scalar", () => {
+  for (const step of [
+    '      - run: grep -E "a\\\\.b" file',
+    '      - run: echo "line\\\\nbreak"',
+    '      - name: Step with "a\\\\d" in its name\n        run: true'
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", `${workflow}${step}\n`);
+      const result = run(root);
+      assert.equal(result.status, 0, `${step}\n${result.stderr}`);
+    });
+  }
+});
+
 test("a quoted backslash inside a comment is not read as a scalar", () => {
   withFixture((root, add) => {
     add(".github/workflows/ci.yml", `${workflow}      # grep uses the pattern "a\\\\.b" here\n`);

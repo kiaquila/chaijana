@@ -135,9 +135,12 @@ function quotedEscapes(text) {
       blockIndent = indent;
       continue;
     }
-    // A comment is not a scalar and cannot change what the workflow runs, so
-    // `# grep uses the pattern "a\.b"` must not read as an escaped value.
-    for (const [, scalar] of code.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)) {
+    // Only a quote in value position opens a YAML double-quoted scalar. In
+    // `run: grep -E "a\.b" file` the value is a plain scalar and the quotes
+    // belong to the shell, so matching every quoted substring would reject an
+    // ordinary inline command. A comment is not a scalar either, which is why
+    // this runs on the comment-stripped line.
+    for (const [, , scalar] of code.matchAll(/(^|[:\-{,[])[ \t]*"((?:[^"\\\n]|\\.)*)"/g)) {
       if (scalar.includes("\\")) found.push(scalar);
     }
   }
