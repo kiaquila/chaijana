@@ -28,13 +28,14 @@ The website lockfile resolves the PostCSS-transitive `nanoid` dependency at
 without a package override.
 
 The temporary customer stage is served by the `chaijana` Cloudflare Worker at
-`https://chaijana.ks-design.workers.dev`. **That Worker still builds from
-`kiaquila/web-design`.** Until the cutover in
-[`docs/migration/cloudflare-cutover.md`](./docs/migration/cloudflare-cutover.md)
-is explicitly authorized and executed, merging to `main` here deploys nothing,
-and pull requests in this repository get no Cloudflare preview. The deploy
-contract itself — `wrangler.json`, `npm run stage:deploy`, and
-`npm run stage:preview` — is already in place and unchanged.
+`https://chaijana.ks-design.workers.dev`. **That Worker builds from this
+repository.** A pull request touching `website/` or `menu/` gets a Cloudflare
+preview, and a merge to `main` gets a production build; both post a
+`Workers Builds: chaijana` check run on the head commit. The cutover record and
+the rollback path are in
+[`docs/migration/cloudflare-cutover.md`](./docs/migration/cloudflare-cutover.md).
+The deploy contract itself — `wrangler.json`, `npm run stage:deploy`, and
+`npm run stage:preview` — is unchanged throughout.
 
 Both share one design system — **Chaijaná Noir**: warm near-black ground, a
 gold-leaf accent ramp, self-hosted Playfair Display for display and Manrope for
