@@ -14,8 +14,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # The event name is part of the group because a Monday scan and a push to
+  # main both resolve `github.ref` to refs/heads/main, and one would otherwise
+  # cancel the other. Superseding is only wanted on a pull request, where a new
+  # push makes the previous run's verdict irrelevant; a main build and a
+  # scheduled scan each need to finish.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   project-ci:

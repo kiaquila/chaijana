@@ -346,6 +346,35 @@ test("a scalar top-level permissions declaration is accepted", () => {
   });
 });
 
+// A declaration ends where its comment begins, in both directions: an
+// annotated write-all is still write-all, and a comment mentioning a trigger
+// is not that trigger.
+test("an annotated write-all is still rejected", () => {
+  for (const declaration of [
+    "permissions: write-all # temporary",
+    "permissions: write-all   # TODO revert before merge",
+    '    permissions: "write-all" # job override'
+  ]) {
+    withFixture((root, add) => {
+      add(".github/workflows/ci.yml", workflow.replace("permissions:\n  contents: read", declaration));
+      const result = run(root);
+      assert.equal(result.status, 1, `${declaration} should be rejected`);
+      assert.match(result.stderr, /may not use write-all/);
+    });
+  }
+});
+
+test("a comment mentioning pull_request_target is not that trigger", () => {
+  withFixture((root, add) => {
+    add(".github/workflows/ci.yml", workflow.replace(
+      "on:",
+      "# Deliberately not pull_request_target: it would run with a write token.\non:"
+    ));
+    const result = run(root);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
 test("write-all and pull_request_target are rejected", () => {
   withFixture((root, add) => {
     add(".github/workflows/ci.yml", workflow

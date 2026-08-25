@@ -178,16 +178,20 @@ const unversionedAction = /^[A-Za-z0-9][\w.-]*(?:\/[\w.-]+)+$/;
 
 for (const workflow of files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file))) {
   const text = readFileSync(join(root, workflow), "utf8");
-  if (/\bpull_request_target\b/.test(text)) {
+  // These three read declarations, which end where a comment begins. Matching
+  // raw text would both miss `permissions: write-all # temporary` and fail a
+  // workflow whose comment merely mentions pull_request_target.
+  const declarations = text.split("\n").map(stripComment).join("\n");
+  if (/\bpull_request_target\b/.test(declarations)) {
     failures.push(`High-risk pull_request_target trigger in ${workflow}`);
   }
-  if (!/^permissions:[ \t]*(?:\n|[^\s#])/m.test(text)) {
+  if (!/^permissions:[ \t]*(?:\n|\S)/m.test(declarations)) {
     failures.push(`Workflow must declare top-level permissions: ${workflow}`);
   }
   // Indentation is allowed here on purpose: a job may override the workflow's
   // permissions, so `write-all` has to be refused wherever it is declared, not
   // only at the top level.
-  if (/^[ \t]*permissions:[ \t]*["']?write-all["']?[ \t]*$/m.test(text)) {
+  if (/^[ \t]*permissions:[ \t]*["']?write-all["']?[ \t]*$/m.test(declarations)) {
     failures.push(`Workflow may not use write-all: ${workflow}`);
   }
 
