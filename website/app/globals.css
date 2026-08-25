@@ -4,7 +4,7 @@
    warm near-black ground, gold-leaf accents, high-contrast display serif.
    ========================================================================== */
 
-/* Playfair Display + Manrope, matching chaijana/menu/src/styles.css. The files
+/* Playfair Display + Manrope, matching menu/src/styles.css. The files
    themselves live in the menu's asset tree and are copied into public/fonts by
    scripts/sync-menu.mjs, so the two stylesheets must be changed together. */
 
@@ -119,7 +119,7 @@
 
   /* Wider than the carta's 1220px on purpose: the site is a full-width
      editorial layout, the menu is a reading column. Every other token here
-     must stay identical to chaijana/menu/src/styles.css. */
+     must stay identical to menu/src/styles.css. */
   --shell: 1280px;
   --header-height: 84px;
 

@@ -48,7 +48,7 @@ upright Latin Playfair and Manrope; their cover has no italic subtitle. RU
 preloads Cyrillic Playfair upright and italic plus Cyrillic Manrope, as well as
 the upright Latin files needed by its address, hours, prices, percentages, and
 language switch. The `unicode-range` declarations that drive this live at the top of
-`chaijana/menu/src/styles.css`; `scripts/build.mjs` emits the locale-specific
+`menu/src/styles.css`; `scripts/build.mjs` emits the locale-specific
 preloads, and `tests/menu.test.mjs` asserts the exact ordered file matrix.
 
 ## Licence
@@ -59,6 +59,6 @@ requires. Sources: the Google Fonts releases of
 [Playfair Display](https://github.com/clauseggers/Playfair-Display) and
 [Manrope](https://github.com/sharanda/manrope).
 
-These files are the single copy in the repository. `chaijana/website` serves the
+These files are the single copy in the repository. `website` serves the
 same fonts from `public/fonts/`, generated at build time by
-`chaijana/website/scripts/sync-menu.mjs`; that directory is git-ignored.
+`website/scripts/sync-menu.mjs`; that directory is git-ignored.

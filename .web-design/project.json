@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "slug": "chaijana",
+    "profile": "next-cloudflare",
+    "productPaths": [
+      "menu",
+      "website"
+    ]
+  },
+  "commands": {
+    "check": [
+      {
+        "name": "project-check-1",
+        "run": "npm run check --prefix menu"
+      },
+      {
+        "name": "project-check-2",
+        "run": "npm ci --prefix website && npm run lint --prefix website"
+      },
+      {
+        "name": "project-check-3",
+        "run": "npm test --prefix website"
+      }
+    ]
+  },
+  "deployment": {
+    "provider": "cloudflare-workers",
+    "productionBranch": "main",
+    "rootDirectory": "website"
+  },
+  "governance": {
+    "source": "kiaquila/web-design",
+    "channel": "v1",
+    "mode": "consumer"
+  },
+  "requiredChecks": [
+    "project-ci",
+    "repository-guard",
+    "baseline-source-verification",
+    "osv-scan",
+    "Codex Review"
+  ]
+}
