@@ -77,8 +77,16 @@ for (const file of files) {
     failures.push(`Sensitive or local-only file is tracked: ${normalized}`);
   }
   const path = join(root, file);
-  if (!existsSync(path)) continue;
-  const stat = lstatSync(path);
+  // `lstatSync` runs before any existence test on purpose: `existsSync` follows
+  // the link, so a symlink whose target is missing reads as absent and would
+  // skip the rejection below. A path that is genuinely gone — listed by git but
+  // deleted in the working tree — throws here and is skipped.
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    continue;
+  }
   if (stat.isSymbolicLink()) {
     failures.push(`Symbolic links are not allowed: ${normalized}`);
     continue;

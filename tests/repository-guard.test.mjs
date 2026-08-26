@@ -167,6 +167,18 @@ test("symbolic links are rejected", () => {
   });
 });
 
+// A link to a missing target is the case an existence check skips: `existsSync`
+// follows the link and reports the path as absent, so the rejection above never
+// runs unless the guard stats the link itself first.
+test("a symbolic link to a missing target is rejected", () => {
+  withFixture((root) => {
+    symlinkSync("no-such-target.md", join(root, "BROKEN.md"));
+    const result = run(root);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Symbolic links are not allowed: BROKEN\.md/);
+  });
+});
+
 // Every spelling below is the same step. The guard matches the action
 // reference rather than the key, so the YAML syntax that introduced it does
 // not matter — which is the property these cases exist to hold.
