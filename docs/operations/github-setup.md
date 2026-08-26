@@ -1,83 +1,59 @@
 # GitHub repository setup
 
-The template contains guardrail workflows; repository settings still require an
+The workflows are in this repository; repository settings still require an
 owner with GitHub administration access.
 
-The template-v2 cutover PR is a one-time trust bootstrap: if the default branch
-does not yet contain `.web-design/project.json`, Repository Guard uses the
-proposed template-v2 checker and emits a warning. After that PR is merged, every
-later pull request uses the checker from the trusted default branch. Review the
-bootstrap PR independently before merge and never reintroduce a pre-v2 default
-branch afterward.
-
-After the first green workflow run:
-
-1. Confirm the repository is private unless its content is intentionally public.
-2. Keep `main` as the default branch and enable automatic head-branch deletion.
-3. Allow GitHub Actions to create pull requests so `Web Design Update` can work.
-4. If `kiaquila/web-design` remains private, add `WEB_DESIGN_READ_TOKEN` as an
-   Actions secret. Use a fine-grained token or GitHub App installation token
-   with read-only Contents access to that repository and no access to customer
-   repositories. It is used only by trusted `workflow_dispatch` and
-   `workflow_run` jobs, never by a pull-request job. Rotate it independently.
-5. Configure the Codex repository environment/application, then request a review
-   for the current full PR head SHA.
-6. When the repository plan supports it, protect `main` with pull requests,
+1. Keep `main` as the default branch and enable automatic head-branch deletion.
+2. Configure the Codex repository application, then request a review for the
+   current full pull-request head SHA with a `@codex review <sha>` comment.
+3. Restrict the `codex-review-dispatch` environment's deployment branches to
+   the default branch. The dispatch job in
+   `.github/workflows/codex-review.yml` holds `checks: write`, and its `if`
+   condition cannot enforce itself: a manual run selects a ref and GitHub loads
+   that ref's copy of the workflow, so a branch could delete the condition and
+   mint a passing `Codex Review` check. GitHub creates the environment on the
+   job's first run; creating it is not the control — opening it and restricting
+   its branches is.
+4. When the repository plan supports it, protect `main` with pull requests,
    required Code Owner review, conversation resolution, no force pushes, no
-   branch deletion, stale approval dismissal, and the actual check names from
-   `.web-design/project.json`. Do not register a required check before it has
-   run. `.github/CODEOWNERS` is still a managed file in this release, and is
-   being handed over to projects in the next one: the updater that performs the
-   handover ships here, but a consumer only runs it *after* this release is
-   installed, so revoking the file here would have the previous updater delete
-   it on the way in. Until the handover lands, do not edit it — an edit is
-   managed-file drift, and the previous updater refuses an update while it
-   stands. Enable the rest of the ruleset now and leave required Code Owner
-   review until the file names an owner with rights in this repository; the
-   paths it lists are not yours to choose in either release, because the
-   baseline tests check that every managed path is covered by some owner and
-   name the missing one when it is not.
-   `baseline-source-verification` is published against the PR head by a trusted
-   default-branch `workflow_run`; require that exact check name after its first
-   successful run.
-7. Protect the privileged manual workflow with an environment, not only with
-   its `if` condition. A manual run selects a ref, and GitHub loads that ref's
-   copy of the workflow file, so a branch can delete the condition it disagrees
-   with before asking for the write token. The repository guard can only check
-   the workflows a pull request proposes; it cannot police a direct branch push.
-   The job already declares `environment: web-design-update`, so GitHub creates
-   that environment on its first run. Creating it is not the control — open it
-   and restrict its deployment branches to the default branch, so GitHub, not
-   the workflow file, decides whether the job may run and whether its secrets
-   are readable. Scope `WEB_DESIGN_READ_TOKEN` to that environment rather than
-   to the repository. Until the branch rule is applied, treat push access to
-   this repository as equivalent to write access through this workflow, and
-   record that rather than claiming the condition enforces it.
-   The Codex Review dispatch job needs the same treatment: it declares
-   `environment: codex-review-dispatch` and holds `checks: write`, so restrict
-   that environment's deployment branches to the default branch too. A branch
-   copy of the workflow could otherwise mint a passing required check.
-8. Enable available dependency alerts, automated fixes, secret scanning, and
-   push protection.
-9. Keep deployment secrets in environment-scoped stores and restrict production
-   environments to `main` plus any required human approval.
+   branch deletion, and stale approval dismissal. Required Code Owner review is
+   what `.github/CODEOWNERS` is for: the repository guard runs from the proposed
+   pull-request tree, so without it a pull request could weaken its own check.
+   It owns `*` rather than a list of paths, because enumerating them has no
+   stopping point — a workflow calls scripts, scripts are named by manifests,
+   manifests dispatch build and test files, and at every step an unowned file
+   could turn a required check into a no-op. The guard jobs additionally invoke
+   `node scripts/check-repository.mjs` and `node --test tests/*.test.mjs`
+   directly rather than through `npm run`, so a rewritten script name cannot do
+   it either.
 
-Some private-repository plans do not expose branch protection or rulesets and
-may return `403` from their APIs. Record the missing control instead of claiming
-it is active. Do not make a private repository public to unlock a protection
-feature.
+   **With a single owner, required Code Owner review cannot be satisfied**: a
+   code owner's approval does not count on their own pull request, so enabling
+   it here would block every pull request rather than gate it. Enable it when
+   there is a second reviewer; until then the manual completion contract at the
+   end of this document is the control, and it should be recorded as such
+   rather than described as enforced.
+5. Require these check names once each has run at least once:
+   `project-ci`, `repository-guard`, `osv-scan`, `Codex Review`, and
+   `Workers Builds: chaijana`. Do not register a required check before it has
+   run.
+6. Enable dependency alerts, secret scanning, and push protection. Dependabot
+   is configured in `.github/dependabot.yml`, with per-ecosystem cooldowns —
+   `github-actions` accepts only `default-days`, while `npm` also takes the
+   `semver-*-days` keys.
+7. Keep deployment secrets in Cloudflare's environment-scoped store. Nothing in
+   this repository needs a GitHub Actions secret: every workflow runs on
+   `github.token`.
 
-When enforced protection is unavailable, the repository owner must apply the
-completion contract manually before every merge: record the exact full head SHA;
-confirm that every contractual check is successful on that same head; confirm
-that every P0-P2 review finding is resolved; then observe a 120-second quiet
-period and fetch the PR again. Immediately before merging, recheck that the head
-SHA is unchanged, the same checks are still green, and no unresolved P0-P2
-thread or newer blocking review has appeared. This documented procedure is a
-mandatory fallback, not a claim that the branch is technically protected.
+Some repository plans do not expose branch protection or rulesets and may return
+`403` from their APIs. Record the missing control instead of claiming it is
+active. `main` is currently unprotected and no ruleset exists.
 
-For organization-owned repositories, prefer an organization ruleset with a
-required workflow or a GitHub App check for the strongest immutable guard. In a
-user-owned repository, the default-branch `workflow_run` plus required Code
-Owner review protects the shared workflow and baseline paths from collaborator
-changes, but the repository owner remains an administrative trust root.
+While enforced protection is unavailable, the owner applies the completion
+contract manually before every merge: record the exact full head SHA; confirm
+every contractual check is successful on that same head; confirm every P0–P2
+review finding is resolved; then observe a quiet period and fetch the pull
+request again. Immediately before merging, recheck that the head SHA is
+unchanged, the same checks are still green, and no unresolved P0–P2 thread or
+newer blocking review has appeared. This is a mandatory fallback, not a claim
+that the branch is technically protected.

@@ -1,7 +1,18 @@
-# Shared baseline trust boundary. Enable required Code Owner review in the ruleset.
-/.github/ @kiaquila
-/.web-design/ @kiaquila
-/docs/operations/ @kiaquila
-/docs/standards/ @kiaquila
-/scripts/ @kiaquila
-/tests/ @kiaquila
+# Every path, deliberately.
+#
+# Enumerating paths invited a regress with no natural stopping point: owning
+# the workflow left the scripts it calls unowned; owning the scripts left the
+# package manifests that name them unowned; owning the manifests left the build
+# and test files those scripts dispatch unowned. Each step, a pull request
+# could still have turned a required check into a no-op without touching an
+# owned path.
+#
+# The repository guard runs from the proposed pull-request tree, so the tree
+# that can weaken a check is the tree under review. This repository holds one
+# product with one owner, so there is no path here that someone else legitimately
+# owns and the honest boundary is all of it.
+#
+# See docs/operations/github-setup.md: with a single owner, required Code Owner
+# review cannot be satisfied on that owner's own pull requests, so the manual
+# completion contract applies until there is a second reviewer.
+* @kiaquila
