@@ -1,17 +1,18 @@
-# The repository guard runs from the proposed pull-request tree, so the tree that
-# can weaken it is the tree under review. Requiring Code Owner review on these
-# paths is what keeps that from being a self-approval.
+# Every path, deliberately.
 #
-# The package manifests are here because they declare the commands CI runs, at
-# both levels: the root scripts, and the menu and website `check`, `lint`, and
-# `test` entries that `check:project` dispatches. Without them a pull request
-# could replace a real check with `true` and watch project-ci go green. The
-# guard jobs additionally invoke their scripts directly, so they do not depend
-# on a script name staying honest either.
-/.github/ @kiaquila
-/docs/standards/ @kiaquila
-/package.json @kiaquila
-/menu/package.json @kiaquila
-/website/package.json @kiaquila
-/scripts/ @kiaquila
-/tests/ @kiaquila
+# Enumerating paths invited a regress with no natural stopping point: owning
+# the workflow left the scripts it calls unowned; owning the scripts left the
+# package manifests that name them unowned; owning the manifests left the build
+# and test files those scripts dispatch unowned. Each step, a pull request
+# could still have turned a required check into a no-op without touching an
+# owned path.
+#
+# The repository guard runs from the proposed pull-request tree, so the tree
+# that can weaken a check is the tree under review. This repository holds one
+# product with one owner, so there is no path here that someone else legitimately
+# owns and the honest boundary is all of it.
+#
+# See docs/operations/github-setup.md: with a single owner, required Code Owner
+# review cannot be satisfied on that owner's own pull requests, so the manual
+# completion contract applies until there is a second reviewer.
+* @kiaquila

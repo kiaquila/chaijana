@@ -19,13 +19,20 @@ owner with GitHub administration access.
    branch deletion, and stale approval dismissal. Required Code Owner review is
    what `.github/CODEOWNERS` is for: the repository guard runs from the proposed
    pull-request tree, so without it a pull request could weaken its own check.
-   The package manifests are owned for the same reason — they declare the
-   commands CI runs, at both levels: the root scripts, and the `menu` and
-   `website` `check`, `lint`, and `test` entries that `check:project`
-   dispatches. The guard jobs additionally invoke
+   It owns `*` rather than a list of paths, because enumerating them has no
+   stopping point — a workflow calls scripts, scripts are named by manifests,
+   manifests dispatch build and test files, and at every step an unowned file
+   could turn a required check into a no-op. The guard jobs additionally invoke
    `node scripts/check-repository.mjs` and `node --test tests/*.test.mjs`
-   directly rather than through `npm run`, so a rewritten script name cannot
-   turn a required job into a no-op.
+   directly rather than through `npm run`, so a rewritten script name cannot do
+   it either.
+
+   **With a single owner, required Code Owner review cannot be satisfied**: a
+   code owner's approval does not count on their own pull request, so enabling
+   it here would block every pull request rather than gate it. Enable it when
+   there is a second reviewer; until then the manual completion contract at the
+   end of this document is the control, and it should be recorded as such
+   rather than described as enforced.
 5. Require these check names once each has run at least once:
    `project-ci`, `repository-guard`, `osv-scan`, `Codex Review`, and
    `Workers Builds: chaijana`. Do not register a required check before it has
