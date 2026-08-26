@@ -249,6 +249,24 @@ test("a local or docker action needs no SHA", () => {
   }
 });
 
+// Erasing the Docker exemption must not erase what shares its line. In flow
+// style a second step sits after the image on the same line, and it still has
+// to be pinned.
+test("a step beside a docker action on one line is still checked", () => {
+  withFixture((root, add) => {
+    add(
+      ".github/workflows/ci.yml",
+      workflow.replace(
+        /^    steps:\n      - uses:.*$/m,
+        '    steps: [{"uses":"docker://alpine"},{"uses":"actions/checkout@v4"}]'
+      )
+    );
+    const result = run(root);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /Action is not pinned to a full SHA/);
+  });
+});
+
 // The other failure direction: a valid workflow must not be rejected because a
 // scalar happens to contain the word "uses:" or an npm-style specifier.
 test("prose and package specs in scalars do not fail a valid workflow", () => {

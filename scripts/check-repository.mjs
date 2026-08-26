@@ -172,7 +172,12 @@ function stripComment(line) {
   return line;
 }
 
-const dockerReference = /docker:\/\/\S+/g;
+// A Docker reference ends where its YAML scalar ends. `\S+` ran past that:
+// in flow style, `[{"uses":"docker://alpine"},{"uses":"actions/checkout@v4"}]`
+// is one line, so erasing to the next space erased the unpinned step beside
+// it. The stop set is the punctuation that closes a scalar — quotes and the
+// flow indicators — which no image reference contains.
+const dockerReference = /docker:\/\/[^\s"',}\]]+/g;
 const actionReference = /(?<![@\w/.-])([A-Za-z0-9][\w.-]*(?:\/[\w.-]+)+)@([\w.-]+)/g;
 
 // The shape above cannot see `uses: owner/repo` with no `@` at all, which is
