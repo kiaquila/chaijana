@@ -32,10 +32,14 @@ The temporary customer stage is served by the `chaijana` Cloudflare Worker at
 repository.** A pull request touching `website/` or `menu/` gets a Cloudflare
 preview, and a merge to `main` gets a production build; both post a
 `Workers Builds: chaijana` check run on the head commit. The cutover record and
-the rollback path are in
+dated production evidence are in
 [`docs/migration/cloudflare-cutover.md`](./docs/migration/cloudflare-cutover.md).
-The deploy contract itself — `wrangler.json`, `npm run stage:deploy`, and
-`npm run stage:preview` — is unchanged throughout.
+Rollback is a Cloudflare Worker version operation: re-check the active
+deployment immediately before selecting a known-good earlier version. The old
+`kiaquila/web-design` repository is not a rollback source because its
+`chaijana/` tree has been removed. The deploy contract itself —
+`wrangler.json`, `npm run stage:deploy`, and `npm run stage:preview` — is
+unchanged throughout.
 
 Both share one design system — **Chaijaná Noir**: warm near-black ground, a
 gold-leaf accent ramp, self-hosted Playfair Display for display and Manrope for
