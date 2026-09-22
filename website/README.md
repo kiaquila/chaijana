@@ -51,3 +51,7 @@ production build; both post a `Workers Builds: chaijana` check run on the head
 commit. The cutover record, the rollback procedure, and the post-cutover smoke
 list are in
 [`../docs/migration/cloudflare-cutover.md`](../docs/migration/cloudflare-cutover.md).
+That document separates current verification from dated build, version, and
+deployment evidence. Before rollback, query the active Cloudflare deployment
+again and move traffic to a confirmed known-good Worker version; do not use
+`kiaquila/web-design` as a deployment source.

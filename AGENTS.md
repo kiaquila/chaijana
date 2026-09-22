@@ -71,3 +71,17 @@ a secret-shaped or personal-path string must assemble it at runtime.
 
 For visual changes, also inspect representative mobile and desktop states in all
 three locales, including the longest menu entries and keyboard focus states.
+
+## Deployment evidence
+
+Deployment status and rollback evidence live in
+`docs/migration/cloudflare-cutover.md`. Before changing a current-status claim,
+fetch `origin/main`, inspect the `Workers Builds: chaijana` check on the exact
+commit, query `npm exec wrangler -- deployments status --name chaijana --json`
+from `website/`, and smoke the stable stage. Record build, version, and
+deployment IDs with their observation dates; never present an old ID as the
+current deployment.
+
+Rollback is through a known-good Cloudflare Worker version. Re-check the active
+deployment immediately before moving traffic. Do not reconnect
+`kiaquila/web-design`: its `chaijana/` tree has been removed.

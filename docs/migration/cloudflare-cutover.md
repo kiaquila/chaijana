@@ -1,13 +1,38 @@
 # Cloudflare cutover and rollback
 
-**Status: connected. The `chaijana` Worker builds from this repository.**
-Observed on 2026-08-25: the first `Workers Builds: chaijana` check run ever to
-appear on a commit here succeeded on pull request #3. Production has not been
-rebuilt from this repository yet — no build has run on `main`, because no commit
-on `main` has touched a watch path since the connection was made. The steps
-below are kept as the record of what was done and as the rollback procedure.
+**Status: connected and serving production from this repository.** Verified on
+2026-09-18: `origin/main` was
+[`f591e3198c143e3a144fb5fea598dc0861914b92`](https://github.com/kiaquila/chaijana/commit/f591e3198c143e3a144fb5fea598dc0861914b92),
+its [`Workers Builds: chaijana` check](https://github.com/kiaquila/chaijana/runs/104553852268)
+succeeded, and Cloudflare reported the resulting version as the active version
+at 100% traffic. The stable stage also passed the HTTP smoke checks recorded
+below. IDs in this document are point-in-time evidence, not substitutes for a
+fresh deployment query before an operational change.
 
-## Recorded state before cutover
+## Current verified production state
+
+Observed on 2026-09-18. The build and deployment happened on 2026-09-15; this
+later verification tied the GitHub check, Cloudflare deployment state, and live
+stage together.
+
+| Fact | Value |
+| --- | --- |
+| Source repository | `kiaquila/chaijana` |
+| Source commit | [`f591e3198c143e3a144fb5fea598dc0861914b92`](https://github.com/kiaquila/chaijana/commit/f591e3198c143e3a144fb5fea598dc0861914b92) |
+| Check run | [`Workers Builds: chaijana`](https://github.com/kiaquila/chaijana/runs/104553852268), success at 2026-09-15T20:32:24Z |
+| Cloudflare build ID | `a4995eb5-ad3d-4986-8322-ed5fa5824578` |
+| Worker version ID | `09adada2-0672-408e-928f-68c838040e98` |
+| Cloudflare deployment ID | `838f6244-9b18-4e56-a4cb-3975fdbb89dd` |
+| Deployment created | 2026-09-15T20:32:12.956342Z, 100% of traffic |
+| Stable stage URL | `https://chaijana.ks-design.workers.dev` |
+
+The 2026-09-18 live smoke returned 200 for `/`, `/en`, `/ru`, `/menu/`,
+`/menu/en`, and `/menu/ru`; the three legacy `.html` menu routes returned the
+expected 307 redirects; and `/nope-404` returned 404. The site and menu security
+headers, font and image responses, and cache policies matched the contract
+below.
+
+## Historical state before cutover
 
 Captured on 2026-08-20, before any change in this migration.
 
@@ -24,13 +49,16 @@ Captured on 2026-08-20, before any change in this migration.
 | Non-production deploy command | `npm run stage:preview` |
 | Deployed source commit | `94dc9a6da3b0bb658b373f7c8f6ed67527acee36` |
 | Cloudflare build ID | `1518fbb8-12b1-4be0-a053-920e8c8480ff` |
+| Worker version ID | `44297898-122b-4123-b4f5-0504c95a9a4e` |
+| Cloudflare deployment ID | `aa7fec48-6b8a-4d40-8cb5-0fe4f54cc570` |
 | GitHub deployment ID | `5952489405` (`chaijana / stage`, succeeded 2026-08-17T22:27:46Z) |
 
 The Cloudflare account identifier and the full dashboard build URL are
 deliberately not recorded in this repository; they are kept with the migration
 evidence outside version control.
 
-**The rollback point and the migration target are the same bytes.** The
+**At cutover, the rollback point and the migration target were the same
+bytes.** The
 `chaijana/` tree of the deployed commit `94dc9a6` is
 `bd877c393c899e84f58c38abb56f3591a8074b7a`, which is exactly the root tree of
 this repository's migrated `main` (`5a8d596a4fe2c45e9b12a0aeb65888cb1f085d9e`).
@@ -56,9 +84,9 @@ includeSubDomains`, `x-content-type-options: nosniff`, `x-frame-options: DENY`,
 `cross-origin-opener-policy: same-origin`, and the `permissions-policy` deny
 list. No third-party origin appears in any policy.
 
-## Record after cutover
+## Historical cutover record
 
-### Preview build — confirmed
+### Preview build — confirmed 2026-08-25
 
 The connection was confirmed empirically rather than from the Cloudflare
 dashboard, by putting a `website/` change on a pull request and watching for the
@@ -78,15 +106,26 @@ Preview status codes: `/`, `/en`, `/ru`, `/menu/`, `/menu/en`, `/menu/ru` all
 200; `/menu/index.html`, `/menu/en.html`, `/menu/ru.html` all 307; `/nope-404`
 404. The rest of the smoke list below is not yet recorded.
 
-### Production build
+### Production build — confirmed 2026-08-26
 
-Not recorded yet. It runs on the first merge to `main` that touches
-`website/*` or `menu/*`.
+The first retained production check from this repository succeeded for
+[`b73c1cd254893d2c3744b9db71a7ef429e2ec404`](https://github.com/kiaquila/chaijana/commit/b73c1cd254893d2c3744b9db71a7ef429e2ec404).
 
-## Cutover procedure
+| Fact | Value |
+| --- | --- |
+| Observed on | 2026-08-26 |
+| Check run | [`Workers Builds: chaijana`](https://github.com/kiaquila/chaijana/runs/98208579079), success |
+| Cloudflare build ID | `ba1f34cb-02d2-49eb-b737-926ff5dfb5d1` |
+| Worker version ID | `a3bfdefe-d7c8-417d-8e41-f02c44716efd` |
+| Cloudflare deployment ID | `547229bc-f203-4043-80a2-0d36fc10ce71` |
 
-Do not start until the baseline adoption pull request is merged, `main` here is
-green, and the owner has authorized the switch.
+Later production builds superseded these IDs. The current verified record is at
+the top of this document.
+
+## Historical cutover procedure
+
+This procedure is retained to explain the completed migration. It is not a
+current runbook and must not be used to reconnect the old repository.
 
 1. **Freeze.** Announce that no merge lands in either repository during the
    cutover.
@@ -127,22 +166,31 @@ green, and the owner has authorized the switch.
 
 ## Rollback
 
-The previous Cloudflare version stays available for the whole procedure.
+Rollback is now a Cloudflare Worker version operation; it does not change the
+Git connection or either repository.
 
-- **Fast rollback, no repository change.** In Cloudflare → `chaijana` →
-  Deployments, roll back to the deployment built from
-  `94dc9a6da3b0bb658b373f7c8f6ed67527acee36`
-  (build `1518fbb8-12b1-4be0-a053-920e8c8480ff`). This restores the exact
-  bytes that are live today.
-- **Full rollback.** Disconnect `kiaquila/chaijana`, reconnect
-  `kiaquila/web-design` with the original settings from the table at the top of
-  this document, and redeploy `main`. This path is available only while the
-  `chaijana/` tree still exists on `kiaquila/web-design`'s default branch —
-  verified present on 2026-08-25. `kiaquila/web-design#46` has since merged
-  without removing it; once that tree is deleted, the fast rollback to build
-  `1518fbb8-12b1-4be0-a053-920e8c8480ff` is the only rollback left.
-- **After rollback**, re-run the smoke list and confirm the header contract
-  above is intact before ending the freeze.
+1. **Re-check the active deployment immediately before acting.** From
+   `website/`, run
+   `npm exec wrangler -- deployments status --name chaijana --json` and record
+   the active deployment ID, version ID, traffic percentage, and timestamp.
+   Do not assume the IDs at the top of this document are still current.
+2. **Choose a known-good earlier version.** As observed on 2026-09-18, the
+   version immediately before the active one was
+   `932fce7c-e8f6-445b-925a-aa24edccec50`, in deployment
+   `0d994079-cf1c-4baa-81b1-83e929038b96` created
+   2026-09-10T20:47:30.143509Z. That is dated evidence, not a permanent
+   rollback target; confirm it is still the intended known-good version.
+3. **Move traffic by version.** In Cloudflare → `chaijana` → Deployments,
+   deploy the selected known-good Worker version at 100%. Cloudflare creates a
+   new deployment for this action; no repository change is required.
+4. **Verify.** Re-run the deployment query, then the smoke list below against
+   the stable stage. Confirm the selected version has 100% traffic and the
+   response/header contract is intact before ending the incident.
+
+There is no repository-level full rollback through `kiaquila/web-design`:
+`chaijana/` was removed from its `main` branch in
+[`cfae7bb8236435579992ac265aead7d3b9d63a57`](https://github.com/kiaquila/web-design/commit/cfae7bb8236435579992ac265aead7d3b9d63a57)
+on 2026-09-17. The pre-cutover IDs above remain historical evidence only.
 
 ## Smoke list after a confirmed cutover
 
