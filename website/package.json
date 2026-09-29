@@ -6,7 +6,7 @@
     "node": ">=22.18.0"
   },
   "overrides": {
-    "undici": "7.29.0",
+    "undici": "7.29.1",
     "image-size": "$image-size"
   },
   "scripts": {
