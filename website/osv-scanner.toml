@@ -1,0 +1,7 @@
+[[IgnoredVulns]]
+id = "GHSA-5p2g-fcmc-qvqq"
+reason = "The local image-size runtime contains the parser fix and has regression coverage in website/tests/image-size-security.test.mjs."
+
+[[IgnoredVulns]]
+id = "GHSA-w3rx-r6r6-pgpr"
+reason = "The local image-size runtime contains the parser fix and has regression coverage in website/tests/image-size-security.test.mjs."
