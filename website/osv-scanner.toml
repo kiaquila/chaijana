@@ -5,3 +5,7 @@ reason = "The local image-size runtime contains the parser fix and has regressio
 [[IgnoredVulns]]
 id = "GHSA-w3rx-r6r6-pgpr"
 reason = "The local image-size runtime contains the parser fix and has regression coverage in website/tests/image-size-security.test.mjs."
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces 3.0.3 has no patched release and is used only by development-time lint and build tooling with repository-owned glob patterns, not untrusted runtime input."
