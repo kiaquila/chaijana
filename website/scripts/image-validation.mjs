@@ -34,12 +34,11 @@ async function readStableImage(image) {
   let previous = await readFile(image);
   let matchingReads = 0;
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  while (matchingReads < 2) {
     await new Promise((resolve) => setTimeout(resolve, 25));
     const current = await readFile(image);
     if (current.length > 0 && current.equals(previous)) {
       matchingReads += 1;
-      if (matchingReads === 2) return current;
     } else {
       matchingReads = 0;
     }

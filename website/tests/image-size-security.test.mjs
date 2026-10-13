@@ -141,7 +141,7 @@ test("revalidates raster images changed after the dev server starts", async () =
   try {
     assert.equal(plugin.enforce, "pre");
     const validation = plugin.hotUpdate({ type: "update", file: imagePath });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await writeFile(imagePath, malformedImages.jxl.payload);
     await assert.rejects(
       validation,
