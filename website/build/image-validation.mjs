@@ -8,8 +8,8 @@ function fileFromModuleId(id) {
 export function imageValidation() {
   let root = process.cwd();
 
-  async function validate(file, stabilize) {
-    if (isRasterImage(file)) await validateImage(file, root, stabilize);
+  async function validate(file, stable = false) {
+    if (isRasterImage(file)) await validateImage(file, root, stable);
   }
 
   return {
@@ -23,8 +23,8 @@ export function imageValidation() {
       if (isAbsolute(file)) await validate(file);
       return null;
     },
-    async hotUpdate({ type, file, read }) {
-      if (type !== "delete") await validate(file, read);
+    async hotUpdate({ type, file }) {
+      if (type !== "delete") await validate(file, true);
     },
   };
 }

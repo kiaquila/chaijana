@@ -137,23 +137,16 @@ test("revalidates raster images changed after the dev server starts", async () =
   await writeFile(imagePath, Buffer.alloc(0));
   const plugin = imageValidation();
   plugin.configResolved({ root: rootPath });
-  let stabilized = false;
 
   try {
     assert.equal(plugin.enforce, "pre");
+    const validation = plugin.hotUpdate({ type: "update", file: imagePath });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await writeFile(imagePath, malformedImages.jxl.payload);
     await assert.rejects(
-      plugin.hotUpdate({
-        type: "update",
-        file: imagePath,
-        async read() {
-          stabilized = true;
-          await writeFile(imagePath, malformedImages.jxl.payload);
-          return "stabilized";
-        },
-      }),
+      validation,
       /Invalid JXL partial codestream box size/,
     );
-    assert.equal(stabilized, true);
     await assert.rejects(
       plugin.load(`${imagePath}?import`),
       /Invalid JXL partial codestream box size/,
