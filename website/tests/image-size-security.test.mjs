@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
+const rootPath = fileURLToPath(root);
 const validator = fileURLToPath(new URL("scripts/validate-images.mjs", root));
 
 function box(type, payload = Buffer.alloc(0), declaredSize = 8 + payload.length) {
@@ -63,6 +64,26 @@ for (const [format, { expected, payload }] of Object.entries(malformedImages)) {
     assert.match(result.stderr, new RegExp(expected));
   });
 }
+
+test("scans build-reachable images outside app and public", async () => {
+  const temporaryRoot = await mkdtemp(join(rootPath, ".image-validation-fixture-"));
+  const imagePath = join(temporaryRoot, "malformed.jxl");
+
+  try {
+    await writeFile(imagePath, malformedImages.jxl.payload);
+    const result = spawnSync(process.execPath, [validator], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+
+    assert.equal(result.error, undefined, "project-wide validator did not terminate");
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /Invalid JXL partial codestream box size/);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
 
 test("runs image validation before the Vinext build", async () => {
   const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));

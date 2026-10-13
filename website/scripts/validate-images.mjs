@@ -1,9 +1,17 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { extname, relative, resolve } from "node:path";
+import { basename, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { imageSize } from "image-size";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const ignoredDirectories = new Set([
+  ".next",
+  ".vinext",
+  ".wrangler",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
 const rasterExtensions = new Set([
   ".avif",
   ".bmp",
@@ -36,6 +44,7 @@ async function collectImages(input, images) {
   }
 
   if (!metadata.isDirectory()) return;
+  if (input !== root && ignoredDirectories.has(basename(input))) return;
   const entries = await readdir(input, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
@@ -47,7 +56,7 @@ async function main() {
   const requestedInputs = process.argv.slice(2);
   const inputs = requestedInputs.length > 0
     ? requestedInputs.map((input) => resolve(process.cwd(), input))
-    : [resolve(root, "app"), resolve(root, "public")];
+    : [root];
   const images = [];
 
   for (const input of inputs) await collectImages(input, images);
