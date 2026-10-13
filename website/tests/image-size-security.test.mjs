@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { imageValidation } from "../build/image-validation.mjs";
 
 const root = new URL("../", import.meta.url);
 const rootPath = fileURLToPath(root);
@@ -125,6 +126,28 @@ test("ignores root outputs during the default scan", async () => {
 
     assert.equal(result.error, undefined, "default validator did not terminate");
     assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("revalidates raster images changed after the dev server starts", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "chaijana-image-watch-"));
+  const imagePath = join(temporaryRoot, "changed.jxl");
+  await writeFile(imagePath, malformedImages.jxl.payload);
+  const plugin = imageValidation();
+  plugin.configResolved({ root: rootPath });
+
+  try {
+    assert.equal(plugin.enforce, "pre");
+    await assert.rejects(
+      plugin.hotUpdate({ type: "update", file: imagePath }),
+      /Invalid JXL partial codestream box size/,
+    );
+    await assert.rejects(
+      plugin.load(`${imagePath}?import`),
+      /Invalid JXL partial codestream box size/,
+    );
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

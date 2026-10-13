@@ -1,5 +1,6 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
+import { imageValidation } from "./build/image-validation.mjs";
 import { sites } from "./build/sites-vite-plugin.ts";
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
@@ -20,6 +21,7 @@ export default defineConfig(async () => {
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
     plugins: [
+      imageValidation(),
       vinext(),
       sites(),
       cloudflare({

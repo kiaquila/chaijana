@@ -1,7 +1,7 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, extname, relative, resolve } from "node:path";
+import { readdir, stat } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { imageSize } from "image-size";
+import { isRasterImage, validateImage } from "./image-validation.mjs";
 
 const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const ignoredRootDirectories = new Set([
@@ -18,34 +18,10 @@ const ignoredRootDirectories = new Set([
   "work",
 ]);
 const ignoredAtAnyDepth = new Set(["node_modules"]);
-const rasterExtensions = new Set([
-  ".avif",
-  ".bmp",
-  ".cur",
-  ".dds",
-  ".gif",
-  ".heic",
-  ".heif",
-  ".icns",
-  ".ico",
-  ".j2c",
-  ".jp2",
-  ".jpeg",
-  ".jpg",
-  ".jxl",
-  ".ktx",
-  ".png",
-  ".psd",
-  ".tga",
-  ".tif",
-  ".tiff",
-  ".webp",
-]);
-
 async function collectImages(input, images, scanRoot) {
   const metadata = await stat(input);
   if (metadata.isFile()) {
-    if (rasterExtensions.has(extname(input).toLowerCase())) images.push(input);
+    if (isRasterImage(input)) images.push(input);
     return;
   }
 
@@ -68,14 +44,7 @@ async function main() {
   const images = [];
 
   for (const input of inputs) await collectImages(input, images, input);
-  for (const image of images) {
-    try {
-      imageSize(await readFile(image));
-    } catch (error) {
-      const displayPath = relative(root, image) || image;
-      throw new Error(`Invalid image ${displayPath}: ${error.message}`);
-    }
-  }
+  for (const image of images) await validateImage(image, root);
 
   console.log(`Validated ${images.length} raster images.`);
 }
