@@ -1,36 +1,83 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import test from "node:test";
+import test, { after, before } from "node:test";
 
 const root = new URL("../", import.meta.url);
+const rootPath = fileURLToPath(root);
 const execFileAsync = promisify(execFile);
+let previewOrigin;
+let previewProcess;
+
+before(async () => {
+  const viteCli = fileURLToPath(new URL("node_modules/vite/bin/vite.js", root));
+  previewProcess = spawn(
+    process.execPath,
+    [viteCli, "preview", "--host", "127.0.0.1", "--port", "0", "--strictPort"],
+    {
+      cwd: rootPath,
+      env: { ...process.env, NO_COLOR: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  previewOrigin = await new Promise((resolve, reject) => {
+    let output = "";
+    const timeout = setTimeout(() => {
+      reject(new Error(`Vite preview did not start within 30 seconds:\n${output}`));
+    }, 30_000);
+
+    const finish = (error, origin) => {
+      clearTimeout(timeout);
+      previewProcess.off("exit", onExit);
+      previewProcess.stdout.off("data", onOutput);
+      previewProcess.stderr.off("data", onOutput);
+      if (error) reject(error);
+      else resolve(origin);
+    };
+    const onExit = (code, signal) => {
+      finish(new Error(`Vite preview exited before startup (${code ?? signal}):\n${output}`));
+    };
+    const onOutput = (chunk) => {
+      output += chunk.toString();
+      const match = output.match(/http:\/\/127\.0\.0\.1:\d+/);
+      if (match) finish(null, match[0]);
+    };
+
+    previewProcess.once("exit", onExit);
+    previewProcess.stdout.on("data", onOutput);
+    previewProcess.stderr.on("data", onOutput);
+  });
+}, { timeout: 35_000 });
+
+after(async () => {
+  if (!previewProcess || previewProcess.exitCode !== null) return;
+
+  previewProcess.kill("SIGTERM");
+  await new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      previewProcess.kill("SIGKILL");
+      resolve();
+    }, 5_000);
+    previewProcess.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}, { timeout: 10_000 });
 
 async function render(lang = "es") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${lang}`);
-  const { default: worker } = await import(workerUrl.href);
   const pathname = lang === "es" ? "/" : `/${lang}`;
-
-  return worker.fetch(
-    new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
+  return fetch(`${previewOrigin}${pathname}`, { headers: { accept: "text/html" } });
 }
 
 async function renderUrl(pathname) {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${pathname}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request(`http://localhost${pathname}`, { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
+  return fetch(`${previewOrigin}${pathname}`, {
+    headers: { accept: "text/html" },
+    redirect: "manual",
+  });
 }
 
 function rootTokens(stylesheet) {
