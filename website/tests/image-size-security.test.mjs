@@ -156,6 +156,23 @@ test("revalidates raster images changed after the dev server starts", async () =
   }
 });
 
+test("rejects permanently empty hot-update images without hanging", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "chaijana-empty-image-watch-"));
+  const imagePath = join(temporaryRoot, "empty.jxl");
+  await writeFile(imagePath, Buffer.alloc(0));
+  const plugin = imageValidation();
+  plugin.configResolved({ root: rootPath });
+
+  try {
+    await assert.rejects(
+      plugin.hotUpdate({ type: "update", file: imagePath }),
+      /Image did not stabilize within 500ms/,
+    );
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("runs image validation before the Vinext build", async () => {
   const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
   assert.match(

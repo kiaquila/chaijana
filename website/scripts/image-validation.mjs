@@ -34,18 +34,19 @@ async function readStableImage(image) {
   let previous = await readFile(image);
   let matchingReads = 0;
 
-  while (matchingReads < 2) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 25));
     const current = await readFile(image);
     if (current.length > 0 && current.equals(previous)) {
       matchingReads += 1;
+      if (matchingReads === 2) return current;
     } else {
       matchingReads = 0;
     }
     previous = current;
   }
 
-  return previous;
+  throw new Error("Image did not stabilize within 500ms");
 }
 
 export async function validateImage(image, root, stable = false) {
