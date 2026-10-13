@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
+const validator = fileURLToPath(new URL("scripts/validate-images.mjs", root));
 
 function box(type, payload = Buffer.alloc(0), declaredSize = 8 + payload.length) {
   const result = Buffer.alloc(8 + payload.length);
@@ -41,24 +46,28 @@ const malformedImages = {
 };
 
 for (const [format, { expected, payload }] of Object.entries(malformedImages)) {
-  test(`rejects the non-progressing ${format} payload`, () => {
-    const source = `
-      import { imageSize } from "image-size";
-      try {
-        imageSize(Buffer.from("${payload.toString("hex")}", "hex"));
-        process.exitCode = 2;
-      } catch (error) {
-        process.stdout.write(error.message);
-      }
-    `;
-    const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], {
+  test(`rejects the non-progressing ${format} payload before Vinext runs`, async () => {
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "chaijana-image-validator-"));
+    const imagePath = join(temporaryRoot, `malformed.${format}`);
+    await writeFile(imagePath, payload);
+
+    const result = spawnSync(process.execPath, [validator, imagePath], {
       cwd: root,
       encoding: "utf8",
       timeout: 1_000,
     });
 
-    assert.equal(result.error, undefined, `${format} parser did not terminate`);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.equal(result.stdout, expected);
+    await rm(temporaryRoot, { recursive: true, force: true });
+    assert.equal(result.error, undefined, `${format} validator did not terminate`);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, new RegExp(expected));
   });
 }
+
+test("runs image validation before the Vinext build", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+  assert.match(
+    packageJson.scripts.build,
+    /^npm run sync:menu && npm run validate:images && .*vinext build$/,
+  );
+});
