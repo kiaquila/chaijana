@@ -1,10 +1,10 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, extname, relative, resolve } from "node:path";
+import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { imageSize } from "image-size";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const ignoredDirectories = new Set([
+const ignoredRootDirectories = new Set([
   ".next",
   ".pnp",
   ".vercel",
@@ -13,11 +13,11 @@ const ignoredDirectories = new Set([
   ".yarn",
   "coverage",
   "dist",
-  "node_modules",
   "out",
   "outputs",
   "work",
 ]);
+const ignoredAtAnyDepth = new Set(["node_modules"]);
 const rasterExtensions = new Set([
   ".avif",
   ".bmp",
@@ -42,7 +42,7 @@ const rasterExtensions = new Set([
   ".webp",
 ]);
 
-async function collectImages(input, images) {
+async function collectImages(input, images, scanRoot) {
   const metadata = await stat(input);
   if (metadata.isFile()) {
     if (rasterExtensions.has(extname(input).toLowerCase())) images.push(input);
@@ -50,11 +50,13 @@ async function collectImages(input, images) {
   }
 
   if (!metadata.isDirectory()) return;
-  if (input !== root && ignoredDirectories.has(basename(input))) return;
+  const directoryName = basename(input);
+  const isRootOutput = dirname(input) === scanRoot && ignoredRootDirectories.has(directoryName);
+  if (ignoredAtAnyDepth.has(directoryName) || isRootOutput) return;
   const entries = await readdir(input, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
-    await collectImages(resolve(input, entry.name), images);
+    await collectImages(resolve(input, entry.name), images, scanRoot);
   }
 }
 
@@ -65,7 +67,7 @@ async function main() {
     : [root];
   const images = [];
 
-  for (const input of inputs) await collectImages(input, images);
+  for (const input of inputs) await collectImages(input, images, input);
   for (const image of images) {
     try {
       imageSize(await readFile(image));

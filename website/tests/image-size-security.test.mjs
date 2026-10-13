@@ -67,11 +67,13 @@ for (const [format, { expected, payload }] of Object.entries(malformedImages)) {
 
 test("scans build-reachable images outside app and public", async () => {
   const temporaryRoot = await mkdtemp(join(rootPath, ".image-validation-fixture-"));
-  const imagePath = join(temporaryRoot, "malformed.jxl");
+  const sourceDirectory = join(temporaryRoot, "app", "work");
+  const imagePath = join(sourceDirectory, "malformed.jxl");
 
   try {
+    await mkdir(sourceDirectory, { recursive: true });
     await writeFile(imagePath, malformedImages.jxl.payload);
-    const result = spawnSync(process.execPath, [validator], {
+    const result = spawnSync(process.execPath, [validator, temporaryRoot], {
       cwd: root,
       encoding: "utf8",
       timeout: 2_000,
@@ -95,7 +97,7 @@ test("ignores documented local output directories", async () => {
       await writeFile(join(outputDirectory, "malformed.jxl"), malformedImages.jxl.payload);
     }
 
-    const result = spawnSync(process.execPath, [validator], {
+    const result = spawnSync(process.execPath, [validator, temporaryRoot], {
       cwd: root,
       encoding: "utf8",
       timeout: 2_000,
