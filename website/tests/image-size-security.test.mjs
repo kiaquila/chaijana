@@ -134,16 +134,26 @@ test("ignores root outputs during the default scan", async () => {
 test("revalidates raster images changed after the dev server starts", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "chaijana-image-watch-"));
   const imagePath = join(temporaryRoot, "changed.jxl");
-  await writeFile(imagePath, malformedImages.jxl.payload);
+  await writeFile(imagePath, Buffer.alloc(0));
   const plugin = imageValidation();
   plugin.configResolved({ root: rootPath });
+  let stabilized = false;
 
   try {
     assert.equal(plugin.enforce, "pre");
     await assert.rejects(
-      plugin.hotUpdate({ type: "update", file: imagePath }),
+      plugin.hotUpdate({
+        type: "update",
+        file: imagePath,
+        async read() {
+          stabilized = true;
+          await writeFile(imagePath, malformedImages.jxl.payload);
+          return "stabilized";
+        },
+      }),
       /Invalid JXL partial codestream box size/,
     );
+    assert.equal(stabilized, true);
     await assert.rejects(
       plugin.load(`${imagePath}?import`),
       /Invalid JXL partial codestream box size/,
