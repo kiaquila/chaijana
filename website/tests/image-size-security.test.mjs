@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +80,29 @@ test("scans build-reachable images outside app and public", async () => {
     assert.equal(result.error, undefined, "project-wide validator did not terminate");
     assert.equal(result.status, 1, result.stderr || result.stdout);
     assert.match(result.stderr, /Invalid JXL partial codestream box size/);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("ignores documented local output directories", async () => {
+  const temporaryRoot = await mkdtemp(join(rootPath, ".image-output-fixture-"));
+
+  try {
+    for (const directory of [".vercel", "out", "outputs", "work"]) {
+      const outputDirectory = join(temporaryRoot, directory);
+      await mkdir(outputDirectory);
+      await writeFile(join(outputDirectory, "malformed.jxl"), malformedImages.jxl.payload);
+    }
+
+    const result = spawnSync(process.execPath, [validator], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+
+    assert.equal(result.error, undefined, "project-wide validator did not terminate");
+    assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

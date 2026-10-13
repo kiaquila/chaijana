@@ -6,11 +6,17 @@ import { imageSize } from "image-size";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const ignoredDirectories = new Set([
   ".next",
+  ".pnp",
+  ".vercel",
   ".vinext",
   ".wrangler",
+  ".yarn",
   "coverage",
   "dist",
   "node_modules",
+  "out",
+  "outputs",
+  "work",
 ]);
 const rasterExtensions = new Set([
   ".avif",
