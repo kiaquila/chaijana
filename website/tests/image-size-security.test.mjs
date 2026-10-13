@@ -110,6 +110,26 @@ test("ignores documented local output directories", async () => {
   }
 });
 
+test("ignores root outputs during the default scan", async () => {
+  const outputRoot = join(rootPath, ".wrangler");
+  await mkdir(outputRoot, { recursive: true });
+  const temporaryRoot = await mkdtemp(join(outputRoot, "image-output-fixture-"));
+
+  try {
+    await writeFile(join(temporaryRoot, "malformed.jxl"), malformedImages.jxl.payload);
+    const result = spawnSync(process.execPath, [validator], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+
+    assert.equal(result.error, undefined, "default validator did not terminate");
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("runs image validation before the Vinext build", async () => {
   const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
   assert.match(

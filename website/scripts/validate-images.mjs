@@ -3,7 +3,7 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { imageSize } from "image-size";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const ignoredRootDirectories = new Set([
   ".next",
   ".pnp",
