@@ -44,14 +44,17 @@ test("native receipt and legacy retain explicit positive head-bound verdicts", (
 test("structured summaries require strict schema, types, full head and clear completed verdict", () => {
   assert.equal(structured(summary()), "pass");
   assert.equal(structured(summary(clear, clear)), "pass");
+  assert.equal(structured(summary({ ...clear, has_any_findings: null, has_unresolved_findings: null, status: "running" }).replace("✅ **Completed**", "🔄 **Running**")), "pending");
   assert.equal(structured(summary() + "\nFound issues."), "fail");
+  assert.equal(structured(summary().replace("`2667f79`", "`0000000`")), "fail");
+  assert.equal(structured(summary().replace("**Completed**", "**In progress**")), "fail");
   for (const code of [
     { ...clear, commit_sha: "a".repeat(40) }, { ...clear, commit_sha: head.slice(0, 10) },
     { ...clear, commit_sha: null }, { ...clear, status: "Completed" },
     { ...clear, has_any_findings: "false" }, { ...clear, has_unresolved_findings: 0 },
     { ...clear, extra: false }, { status: "completed" }
   ]) assert.equal(structured(summary(code)), null, JSON.stringify(code));
-  for (const code of [{ ...clear, status: "in_progress" }, { ...clear, status: "failed" }, { ...clear, has_any_findings: null }]) assert.equal(structured(summary(code)), "pending");
+  for (const code of [{ ...clear, status: "running" }, { ...clear, status: "in_progress" }, { ...clear, status: "failed" }, { ...clear, has_any_findings: null }]) assert.equal(structured(summary(code)), "pending");
   for (const code of [{ ...clear, has_any_findings: true }, { ...clear, has_unresolved_findings: true }]) assert.equal(structured(summary(code)), "fail");
   assert.equal(structured(summary(clear, { ...clear, has_any_findings: true })), "fail");
   assert.equal(structured(summary(clear, { ...clear, status: "pending" })), "pending");
@@ -61,8 +64,7 @@ test("structured summaries require strict schema, types, full head and clear com
     summary().replace('"status":"completed"', '"status":"pending","status":"completed"'),
     summary().replace('"code_review"', '"unknown"'), summary().replace('"code_review":', '"code_review":broken'),
     `${summary()}\n<!-- codex-review-state:v1 {} -->`, `${summary()}\n<!-- codex-pull-request-review-summary -->`,
-    `${summary()}\n${legacy}`, summary().replace("`2667f79`", "`0000000`"),
-    summary().replace("**Completed**", "**In progress**"), "## Codex Review Summary\nCompleted 👍"
+    `${summary()}\n${legacy}`, "## Codex Review Summary\nCompleted 👍"
   ]) assert.equal(structured(body), null, body);
   assert.equal(codexStructuredSummaryResult({ ...comment(summary()), user: { login: "fake-codex[bot]" } }, head), null);
 });
@@ -108,6 +110,8 @@ test("a new request never clears findings or unresolved threads", () => {
   assert.equal(evaluateCodexReviewEvidence(evidence({ reviews: [{ id: 1, commit_id: head, state: "CHANGES_REQUESTED", user, submitted_at: "2026-10-15T20:59:00Z" }] })), "fail");
   assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), comment(summary({ ...clear, has_any_findings: true }))] })), "fail");
   assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), comment(summary({ ...clear, status: "pending" }))] })), "pending");
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), comment(summary({ ...clear, status: "running" }))] })), "pending");
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), comment(summary().replace("**Completed**", "**In progress**"))] })), "fail");
 });
 
 test("requeue checks the live head after waiting and coalesces already evaluated updates", async () => {
