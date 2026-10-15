@@ -78,7 +78,10 @@ A structured summary may predate the request: its `updated_at` must then be
 strictly later than both creation and the request. Receipt edits do not refresh
 short-SHA evidence. Non-final structured activity must also follow the latest
 request or a later edit; an abandoned pending/failed/cancelled summary cannot
-veto newer qualifying evidence. Explicit findings still survive a new request.
+veto newer qualifying evidence. A later qualifying final receipt, formal review,
+or structured verdict also supersedes earlier non-final activity within the
+same request; equal timestamps remain ambiguous and block. A later activity edit
+blocks again. Explicit findings still survive a new request and later receipts.
 All unresolved review threads block success, including
 threads on earlier heads. A new request cannot discard a current-head negative
 formal review. P0–P2 findings continue to block; formal P3-only reviews retain

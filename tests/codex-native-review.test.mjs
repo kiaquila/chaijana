@@ -132,6 +132,27 @@ test("stale non-final summaries cannot veto a later request, but findings surviv
   }
 });
 
+test("newer final evidence supersedes post-request non-final activity", () => {
+  for (const status of ["pending", "running", "in_progress", "failed", "cancelled"]) {
+    const activity = comment(summary({ ...clear, status }));
+    const laterTime = "2026-10-15T21:02:00Z";
+    const laterReceipt = { ...comment(receipt), created_at: laterTime, updated_at: laterTime };
+    const laterReview = { id: 1, commit_id: head, user, state: "COMMENTED", submitted_at: laterTime };
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [activity, laterReceipt] })), "pass", status);
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [activity], reviews: [laterReview] })), "pass", status);
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [activity, { ...comment(summary()), created_at: laterTime, updated_at: laterTime }] })), "pass", status);
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [activity, comment(receipt)] })), "pending", "same-second activity remains blocking");
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [{ ...activity, updated_at: "2026-10-15T21:03:00Z" }, laterReceipt] })), "pending", "a later edit reopens activity");
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [{ ...activity, body: summary({ ...clear, status, has_unresolved_findings: true }) }, laterReceipt] })), "fail", "later passes do not discard findings");
+  }
+  assert.equal(structured(summary({ ...clear, status: "failed" }).replace("**Completed**", "**Failed**")), "pending");
+  assert.equal(structured(summary({ ...clear, status: "failed" }) + "\nReview failed"), "pending");
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [
+    { ...comment(summary()), updated_at: "invalid" },
+    { ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T21:02:00Z", updated_at: "2026-10-15T21:02:00Z" }
+  ] })), "pending", "invalid edit dates cannot erase later activity ordering");
+});
+
 test("requeue checks the live head after waiting and coalesces already evaluated updates", async () => {
   const run = { id: 42, event: "pull_request", head_sha: head, status: "completed", created_at: requestedAt, run_started_at: reviewedAt };
   for (const scenario of ["completed", "active", "stale", "duplicate", "absent"]) {
@@ -172,7 +193,8 @@ function runGate({ comments = [comment(receipt)], threads = [], moved = false, d
 
 test("the executed gate validates receipt, edited summary, paginated threads and final head", () => {
   for (const options of [{}, { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }] },
-    { comments: [{ ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" }, comment(receipt)] }]) {
+    { comments: [{ ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" }, comment(receipt)] },
+    { comments: [comment(summary({ ...clear, status: "failed" })), { ...comment(receipt), created_at: "2026-10-15T21:02:00Z", updated_at: "2026-10-15T21:02:00Z" }] }]) {
     const result = runGate(options);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Codex Review passed/);

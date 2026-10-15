@@ -235,12 +235,12 @@ export function codexStructuredSummaryResult(comment, headSha, requestedAt, sour
   if (!isCommentAfterRequest(comment, requestedAt, sourceCommentId, true)) return null;
   // Visible commit references must agree with the machine verdict too.
   const visible = body.replace(matches[0][0], "");
-  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1])) ||
-      /(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible) ||
-      hasConflictingCodexVerdict(visible)) return "fail";
+  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1]))) return "fail";
   const clear = (value) => value.status === "completed" &&
     value.has_any_findings === false && value.has_unresolved_findings === false;
   if (!clear(code) || (!securityAbsent && !clear(security))) return "pending";
+  if (/(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible) ||
+      hasConflictingCodexVerdict(visible)) return "fail";
   return "pass";
 }
 
@@ -260,21 +260,38 @@ export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, s
     (body.match(/<!--/g) || []).length === (body.startsWith("<!-- codex-review-receipt:v1 -->") ? 1 : 0);
 }
 
+function commentActivityTime(comment) {
+  const created = Date.parse(comment.created_at || "");
+  const updated = Date.parse(comment.updated_at || "");
+  return Number.isFinite(updated) && updated > created ? updated : created;
+}
+
 export function evaluateCodexReviewEvidence({ comments, reviews, reviewComments, threads, headSha, requestMarker }) {
   // Findings survive a new request marker, including findings on earlier heads.
   if (threads.some((thread) => !thread.isResolved)) return "fail";
   if (latestCodexNativeReviewResult(reviews, reviewComments, headSha) === "fail") return "fail";
   const requestedAt = requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt;
-  const structured = comments.map((comment) => codexStructuredSummaryResult(
-    comment, headSha, requestedAt, requestMarker.sourceCommentId
-  ));
-  if (structured.includes("fail")) return "fail";
-  if (structured.includes("pending")) return "pending";
-  const native = latestCodexNativeReviewResult(reviews.filter((review) =>
-    isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker)
-  ), reviewComments, headSha);
-  if (native) return native;
-  return structured.includes("pass") || comments.some((comment) => isAcceptableCodexSummaryComment(
-    comment, headSha, requestedAt, requestMarker.sourceCommentId
-  )) ? "pass" : "pending";
+  const structured = comments.map((comment) => ({
+    result: codexStructuredSummaryResult(comment, headSha, requestedAt, requestMarker.sourceCommentId),
+    time: commentActivityTime(comment)
+  }));
+  if (structured.some((entry) => entry.result === "fail")) return "fail";
+  const passes = structured.filter((entry) => entry.result === "pass").map((entry) => entry.time);
+  for (const review of reviews) {
+    if (isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker) &&
+        classifyCodexNativeReview(review, reviewComments, headSha) === "pass") {
+      passes.push(Date.parse(review.submitted_at));
+    }
+  }
+  for (const comment of comments) {
+    if (isAcceptableCodexSummaryComment(comment, headSha, requestedAt, requestMarker.sourceCommentId)) {
+      passes.push(Date.parse(comment.created_at));
+    }
+  }
+  if (passes.length === 0) return "pending";
+  const latestPass = Math.max(...passes);
+  // A later final result supersedes abandoned activity, but a same-second tie
+  // cannot prove that the final result evaluated the new activity.
+  if (structured.some((entry) => entry.result === "pending" && entry.time >= latestPass)) return "pending";
+  return "pass";
 }
