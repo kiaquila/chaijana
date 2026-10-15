@@ -183,65 +183,13 @@ function hasConflictingCodexVerdict(body) {
   return /\b(?:found (?:any )?(?:issues|findings)|changes requested|unresolved findings|review (?:pending|in progress|failed)|but|however|except|critical|blocker|regression|bugs?)\b/i.test(body);
 }
 
-function isCommentAfterRequest(comment, requestedAt, sourceCommentId, allowEdit = false) {
+function isCommentAfterRequest(comment, requestedAt, sourceCommentId) {
   if (!requestedAt) return true;
   const created = Date.parse(comment?.created_at || "");
-  const updated = Date.parse(comment?.updated_at || "");
   const requested = Date.parse(requestedAt);
   if (!Number.isFinite(requested)) return false;
-  if (allowEdit && Number.isFinite(updated) && updated > created && updated > requested) return true;
   return Number.isFinite(created) && (created > requested ||
     (created === requested && compareNumericIds(comment?.id, sourceCommentId) > 0));
-}
-
-export function codexStructuredSummaryResult(comment, headSha, requestedAt, sourceCommentId) {
-  const body = String(comment?.body || "");
-  if (!isTrustedCodexLogin(comment?.user?.login) ||
-      !/^[a-f0-9]{40}$/.test(String(headSha || "")) ||
-      !body.startsWith("<!-- codex-pull-request-review-summary -->")) return null;
-  const matches = [...body.matchAll(/<!-- codex-review-state:v1 ([^\n]*?) -->/g)];
-  if (matches.length !== 1 ||
-      (body.match(/codex-review-state:/g) || []).length !== 1 ||
-      (body.match(/codex-pull-request-review-summary/g) || []).length !== 1 ||
-      /codex-review-receipt:|^Codex Review:|\*\*Reviewed commit:/m.test(body)) return null;
-  let state;
-  try { state = JSON.parse(matches[0][1]); } catch { return null; }
-  const keysAre = (value, keys) => value && typeof value === "object" && !Array.isArray(value) &&
-    Object.keys(value).sort().join(",") === [...keys].sort().join(",");
-  const fields = ["commit_sha", "has_any_findings", "has_unresolved_findings", "status"];
-  if (!keysAre(state, ["code_review", "security_review"])) return null;
-  // JSON.parse keeps only the last duplicate property; reject duplicates before
-  // treating that parsed object as evidence.
-  for (const key of ["code_review", "security_review", ...fields]) {
-    const count = [...matches[0][1].matchAll(new RegExp(`"${key}"\\s*:`, "g"))].length;
-    if (count !== (fields.includes(key) ? 2 : 1)) return null;
-  }
-  for (const value of Object.values(state)) {
-    if (!keysAre(value, fields) ||
-        !(value.commit_sha === null || /^[a-f0-9]{40}$/.test(value.commit_sha)) ||
-        ![null, true, false].includes(value.has_any_findings) ||
-        ![null, true, false].includes(value.has_unresolved_findings) ||
-        ![null, "pending", "queued", "running", "in_progress", "completed", "failed", "cancelled"].includes(value.status)) return null;
-  }
-  const code = state.code_review;
-  const security = state.security_review;
-  if (code.commit_sha !== headSha) return null;
-  // Real findings survive a new request; abandoned non-final activity does not.
-  if (code.has_any_findings === true || code.has_unresolved_findings === true ||
-      containsBlockingCodexSeverity(body)) return "fail";
-  const securityAbsent = Object.values(security).every((value) => value === null);
-  if (!securityAbsent && security.commit_sha !== headSha) return null;
-  if (!securityAbsent && (security.has_any_findings === true || security.has_unresolved_findings === true)) return "fail";
-  if (!isCommentAfterRequest(comment, requestedAt, sourceCommentId, true)) return null;
-  // Visible commit references must agree with the machine verdict too.
-  const visible = body.replace(matches[0][0], "");
-  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1]))) return "fail";
-  const clear = (value) => value.status === "completed" &&
-    value.has_any_findings === false && value.has_unresolved_findings === false;
-  if (!clear(code) || (!securityAbsent && !clear(security))) return "pending";
-  if (/(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible) ||
-      hasConflictingCodexVerdict(visible)) return "fail";
-  return "pass";
 }
 
 export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, sourceCommentId) {
@@ -260,38 +208,19 @@ export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, s
     (body.match(/<!--/g) || []).length === (body.startsWith("<!-- codex-review-receipt:v1 -->") ? 1 : 0);
 }
 
-function commentActivityTime(comment) {
-  const created = Date.parse(comment.created_at || "");
-  const updated = Date.parse(comment.updated_at || "");
-  return Number.isFinite(updated) && updated > created ? updated : created;
-}
-
 export function evaluateCodexReviewEvidence({ comments, reviews, reviewComments, threads, headSha, requestMarker }) {
   // Findings survive a new request marker, including findings on earlier heads.
   if (threads.some((thread) => !thread.isResolved)) return "fail";
   if (latestCodexNativeReviewResult(reviews, reviewComments, headSha) === "fail") return "fail";
-  const requestedAt = requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt;
-  const structured = comments.map((comment) => ({
-    result: codexStructuredSummaryResult(comment, headSha, requestedAt, requestMarker.sourceCommentId),
-    time: commentActivityTime(comment)
-  }));
-  if (structured.some((entry) => entry.result === "fail")) return "fail";
-  const passes = structured.filter((entry) => entry.result === "pass").map((entry) => entry.time);
-  for (const review of reviews) {
-    if (isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker) &&
-        classifyCodexNativeReview(review, reviewComments, headSha) === "pass") {
-      passes.push(Date.parse(review.submitted_at));
-    }
-  }
-  for (const comment of comments) {
-    if (isAcceptableCodexSummaryComment(comment, headSha, requestedAt, requestMarker.sourceCommentId)) {
-      passes.push(Date.parse(comment.created_at));
-    }
-  }
-  if (passes.length === 0) return "pending";
-  const latestPass = Math.max(...passes);
-  // A later final result supersedes abandoned activity, but a same-second tie
-  // cannot prove that the final result evaluated the new activity.
-  if (structured.some((entry) => entry.result === "pending" && entry.time >= latestPass)) return "pending";
-  return "pass";
+  const native = latestCodexNativeReviewResult(reviews.filter((review) =>
+    isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker)
+  ), reviewComments, headSha);
+  if (native) return native;
+  // Structured summaries wake the gate on creation/edits, but their JSON,
+  // visible status, timestamps, and reactions cannot supply a review verdict.
+  return comments.some((comment) => isAcceptableCodexSummaryComment(
+    comment, headSha,
+    requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt,
+    requestMarker.sourceCommentId
+  )) ? "pass" : "pending";
 }

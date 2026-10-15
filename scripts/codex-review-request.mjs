@@ -59,7 +59,7 @@ async function main() {
     requestedAt
   });
 
-  await request(`/repos/${owner}/${repo}/issues/${event.issue.number}/comments`, {
+  const markerComment = await request(`/repos/${owner}/${repo}/issues/${event.issue.number}/comments`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ body: markerBody })
@@ -67,7 +67,7 @@ async function main() {
 
   try {
     const result = await rerunCodexReviewForHead({
-      token, repository, headSha, prNumber: event.issue.number, evidenceUpdatedAt: comment.created_at
+      token, repository, headSha, prNumber: event.issue.number, evidenceUpdatedAt: markerComment?.created_at
     });
     console.log(result.message);
   } catch (error) {
