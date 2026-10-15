@@ -136,8 +136,7 @@ export function extractCodexPriority(body) {
 }
 
 export function containsBlockingCodexSeverity(body) {
-  const priority = extractCodexPriority(body);
-  return priority !== null && priority <= 2;
+  return /\bP[0-2]\b/i.test(String(body || ""));
 }
 
 export function classifyCodexNativeReview(review, reviewComments = [], headSha) {
@@ -153,7 +152,7 @@ export function classifyCodexNativeReview(review, reviewComments = [], headSha) 
   if (commentsForReview.length > 0) {
     const priorities = commentsForReview.map((comment) => extractCodexPriority(comment.body));
     if (priorities.some((priority) => priority === null)) return "fail";
-    if (Math.min(...priorities) <= 2) return "fail";
+    if (commentsForReview.some((comment) => containsBlockingCodexSeverity(comment.body))) return "fail";
   }
 
   return review.state === "APPROVED" || review.state === "COMMENTED" ? "pass" : null;
@@ -173,19 +172,106 @@ export function latestCodexNativeReviewResult(reviews = [], reviewComments = [],
     })[0]?.result || null;
 }
 
+// Routing is deliberately broader than evidence validation: a negative or pending
+// update must wake the gate too, but can never grant a passing verdict.
+export function isCodexReviewSignal(body) {
+  return /^(?:Codex Review:|<!-- codex-review-receipt:v1 -->|<!-- codex-pull-request-review-summary -->)/i
+    .test(String(body || ""));
+}
+
+function hasConflictingCodexVerdict(body) {
+  return /\b(?:found (?:any )?(?:issues|findings)|changes requested|unresolved findings|review (?:pending|in progress|failed))\b/i.test(body);
+}
+
+function isCommentAfterRequest(comment, requestedAt, sourceCommentId, allowEdit = false) {
+  if (!requestedAt) return true;
+  const created = Date.parse(comment?.created_at || "");
+  const updated = Date.parse(comment?.updated_at || "");
+  const requested = Date.parse(requestedAt);
+  if (!Number.isFinite(requested)) return false;
+  if (allowEdit && Number.isFinite(updated) && updated > created && updated > requested) return true;
+  return Number.isFinite(created) && (created > requested ||
+    (created === requested && compareNumericIds(comment?.id, sourceCommentId) > 0));
+}
+
+export function codexStructuredSummaryResult(comment, headSha, requestedAt, sourceCommentId) {
+  const body = String(comment?.body || "");
+  if (!isTrustedCodexLogin(comment?.user?.login) ||
+      !/^[a-f0-9]{40}$/.test(String(headSha || "")) ||
+      !body.startsWith("<!-- codex-pull-request-review-summary -->")) return null;
+  const matches = [...body.matchAll(/<!-- codex-review-state:v1 ([^\n]*?) -->/g)];
+  if (matches.length !== 1 ||
+      (body.match(/codex-review-state:/g) || []).length !== 1 ||
+      (body.match(/codex-pull-request-review-summary/g) || []).length !== 1 ||
+      /codex-review-receipt:|^Codex Review:|\*\*Reviewed commit:/m.test(body)) return null;
+  let state;
+  try { state = JSON.parse(matches[0][1]); } catch { return null; }
+  const keysAre = (value, keys) => value && typeof value === "object" && !Array.isArray(value) &&
+    Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+  const fields = ["commit_sha", "has_any_findings", "has_unresolved_findings", "status"];
+  if (!keysAre(state, ["code_review", "security_review"])) return null;
+  // JSON.parse keeps only the last duplicate property; reject duplicates before
+  // treating that parsed object as evidence.
+  for (const key of ["code_review", "security_review", ...fields]) {
+    const count = [...matches[0][1].matchAll(new RegExp(`"${key}"\\s*:`, "g"))].length;
+    if (count !== (fields.includes(key) ? 2 : 1)) return null;
+  }
+  for (const value of Object.values(state)) {
+    if (!keysAre(value, fields) ||
+        !(value.commit_sha === null || /^[a-f0-9]{40}$/.test(value.commit_sha)) ||
+        ![null, true, false].includes(value.has_any_findings) ||
+        ![null, true, false].includes(value.has_unresolved_findings) ||
+        ![null, "pending", "queued", "in_progress", "completed", "failed", "cancelled"].includes(value.status)) return null;
+  }
+  // Visible commit references must agree with the machine verdict too.
+  const visible = body.replace(matches[0][0], "");
+  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1])) ||
+      /(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible)) return null;
+  const code = state.code_review;
+  const security = state.security_review;
+  if (code.commit_sha !== headSha) return null;
+  if (code.has_any_findings === true || code.has_unresolved_findings === true ||
+      containsBlockingCodexSeverity(body) || hasConflictingCodexVerdict(visible)) return "fail";
+  const securityAbsent = Object.values(security).every((value) => value === null);
+  if (!securityAbsent && security.commit_sha !== headSha) return null;
+  if (!securityAbsent && (security.has_any_findings === true || security.has_unresolved_findings === true)) return "fail";
+  const clear = (value) => value.status === "completed" &&
+    value.has_any_findings === false && value.has_unresolved_findings === false;
+  if (!clear(code) || (!securityAbsent && !clear(security))) return "pending";
+  return isCommentAfterRequest(comment, requestedAt, sourceCommentId, true) ? "pass" : null;
+}
+
 export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, sourceCommentId) {
   const body = String(comment?.body || "");
-  const shortSha = String(headSha || "").slice(0, 10);
-  const commentCreatedAt = Date.parse(comment?.created_at || "");
-  const requestTime = Date.parse(requestedAt || "");
-  const ordering = commentCreatedAt === requestTime
-    ? compareNumericIds(comment?.id, sourceCommentId) > 0
-    : commentCreatedAt > requestTime;
-  const isAfterRequest = !requestedAt ||
-    (Number.isFinite(commentCreatedAt) && Number.isFinite(requestTime) && ordering);
-  return isAfterRequest &&
-    isTrustedCodexLogin(comment?.user?.login) &&
-    /^Codex Review:\s*Didn't find any major issues\./im.test(body) &&
-    Boolean(shortSha) &&
-    new RegExp(`\\*\\*Reviewed commit:\\*\\*\\s*\\\`${shortSha}\\\``, "i").test(body);
+  if (!isTrustedCodexLogin(comment?.user?.login) ||
+      !/^[a-f0-9]{40}$/.test(String(headSha || "")) ||
+      !isCommentAfterRequest(comment, requestedAt, sourceCommentId) ||
+      containsBlockingCodexSeverity(body) || hasConflictingCodexVerdict(body)) return false;
+  // Preserve the native legacy sentence and optional informational details. The
+  // receipt marker is optional, unique, and must precede the verdict.
+  const match = body.trim().match(/^(?:<!-- codex-review-receipt:v1 -->\s*)?Codex Review: Didn't find any major issues\.(?: :rocket:| 🚀| Keep it up!)?\s+\*\*Reviewed commit:\*\*\s*`([a-f0-9]{10}|[a-f0-9]{40})`(?:\s*<details>\s*<summary>[^<]*About Codex in GitHub<\/summary>[\s\S]*<\/details>)?$/);
+  return Boolean(match) &&
+    (match[1] === headSha || match[1] === headSha.slice(0, 10)) &&
+    (body.match(/Codex Review:/g) || []).length === 1 &&
+    (body.match(/\*\*Reviewed commit:/g) || []).length === 1 &&
+    (body.match(/<!--/g) || []).length === (body.startsWith("<!-- codex-review-receipt:v1 -->") ? 1 : 0);
+}
+
+export function evaluateCodexReviewEvidence({ comments, reviews, reviewComments, threads, headSha, requestMarker }) {
+  // Findings survive a new request marker, including findings on earlier heads.
+  if (threads.some((thread) => !thread.isResolved)) return "fail";
+  if (latestCodexNativeReviewResult(reviews, reviewComments, headSha) === "fail") return "fail";
+  const requestedAt = requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt;
+  const structured = comments.map((comment) => codexStructuredSummaryResult(
+    comment, headSha, requestedAt, requestMarker.sourceCommentId
+  ));
+  if (structured.includes("fail")) return "fail";
+  if (structured.includes("pending")) return "pending";
+  const native = latestCodexNativeReviewResult(reviews.filter((review) =>
+    isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker)
+  ), reviewComments, headSha);
+  if (native) return native;
+  return structured.includes("pass") || comments.some((comment) => isAcceptableCodexSummaryComment(
+    comment, headSha, requestedAt, requestMarker.sourceCommentId
+  )) ? "pass" : "pending";
 }

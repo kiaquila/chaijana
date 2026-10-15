@@ -57,3 +57,40 @@ request again. Immediately before merging, recheck that the head SHA is
 unchanged, the same checks are still green, and no unresolved P0–P2 thread or
 newer blocking review has appeared. This is a mandatory fallback, not a claim
 that the branch is technically protected.
+
+## Native review evidence and requeue
+
+The gate accepts native formal reviews, legacy no-findings comments, version 1
+receipt comments, and version 1 structured review summaries from
+`chatgpt-codex-connector[bot]`. A receipt must retain the explicit no-major-issues
+sentence and the exact native ten-character head prefix (or full head). A
+structured summary must contain exactly one state marker with the complete
+schema, the current full commit SHA, `completed` status, and explicit `false`
+findings flags. An absent security review has all four fields set to `null`;
+an active security review must also complete cleanly for the same head.
+Malformed, duplicate, contradictory, pending, stale, and impersonated evidence
+cannot grant success. Reactions and a visible `Completed` label are not evidence.
+
+A structured summary may predate the request: its `updated_at` must then be
+strictly later than both creation and the request. Receipt edits do not refresh
+short-SHA evidence. All unresolved review threads block success, including
+threads on earlier heads. A new request cannot discard a current-head negative
+formal review. P0–P2 findings continue to block; formal P3-only reviews retain
+their existing treatment once their threads are resolved.
+
+Both `created` and `edited` native comment events wake the trusted default-branch
+rerun policy, including negative and pending updates. The job serializes events
+for a PR, waits for active gates with a finite timeout, checks the live PR head
+before requeue, and avoids requeue when a later-started run already evaluated
+the event. The gate checks the head again after fetching evidence so a dispatch
+cannot publish success after a concurrent push.
+
+When installing this routing update, the proposed scripts are not yet trusted.
+After a real native receipt or formal review arrives for the exact PR head,
+rerun its existing `pull_request` Codex Review workflow through the normal
+Actions rerun API/CLI if the old comment filter did not wake it. That workflow
+still executes the default-branch gate, whose parser already accepts native
+receipt prefixes. This preserves the trust boundary and produces a genuine
+review-backed result for the installation PR; it does not execute proposed
+scripts with write permission, fabricate a check, or require changing settings.
+After merge, comment events use the updated default-branch routing automatically.

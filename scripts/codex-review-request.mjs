@@ -66,7 +66,9 @@ async function main() {
   });
 
   try {
-    const result = await rerunCodexReviewForHead({ token, repository, headSha });
+    const result = await rerunCodexReviewForHead({
+      token, repository, headSha, prNumber: event.issue.number, evidenceUpdatedAt: comment.created_at
+    });
     console.log(result.message);
   } catch (error) {
     console.warn(`Marker recorded, but Codex Review rerun could not be requested: ${error.message}`);
