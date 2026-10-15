@@ -27,13 +27,16 @@ const accept = (body) => isAcceptableCodexSummaryComment(comment(body), head, re
 const structured = (body) => codexStructuredSummaryResult(comment(body), head, requestedAt, 30);
 
 test("native receipt and legacy retain explicit positive head-bound verdicts", () => {
-  for (const body of [legacy, receipt, receipt.replace(":rocket:", "Keep it up!"), receipt.replace(":rocket:", "Chef's kiss."), receipt.replace(":rocket:", "Nice work!"), legacy.replace(head.slice(0, 10), head)]) assert.equal(accept(body), true);
+  for (const body of [legacy, receipt, receipt.replace(":rocket:", "Keep it up!"), receipt.replace(":rocket:", "Chef's kiss."), receipt.replace(":rocket:", "Nice work!"), receipt.replace(":rocket:", "Keep them coming!"), legacy.replace(head.slice(0, 10), head)]) assert.equal(accept(body), true);
   for (const body of [
     receipt.replace("2667f79cd7", "0000000000"), receipt.replace("2667f79cd7", head.slice(0, 9)),
     receipt.replace(/\*\*Reviewed commit:.*\n/, ""), receipt.replace("Didn't find any major issues.", "Found issues."),
     receipt.replace("Didn't find any major issues.", "Review in progress."),
     receipt.replace(":rocket:", "But there is a regression."),
     receipt.replace(":rocket:", "However, review failed."),
+    receipt.replace(":rocket:", "Except there is a critical regression."),
+    receipt.replace(":rocket:", "Unrecognized sign-off."),
+    receipt.replace("<br/>", "<br/> Except there is a critical regression."),
     `${receipt}\nP2 unresolved regression`, `${receipt}\n${legacy}`, receipt.replace("v1 -->", "v2 -->"),
     `<!-- codex-review-receipt:v1 -->\n${receipt}`, receipt.replace("<br/>", "<br/>\nP3 note and P1 regression"),
     receipt.replace("<br/>", "<!-- codex-review-state:v1 {} -->"), receipt.replace("<br/>", "Found issues."), "Completed 👍"

@@ -63,7 +63,10 @@ that the branch is technically protected.
 The gate accepts native formal reviews, legacy no-findings comments, version 1
 receipt comments, and version 1 structured review summaries from
 `chatgpt-codex-connector[bot]`. A receipt must retain the explicit no-major-issues
-sentence and the exact native ten-character head prefix (or full head). A
+sentence and the exact native ten-character head prefix (or full head). Only
+observed positive receipt sign-offs are accepted; unknown or contradictory prose
+fails closed, while a valid full-head structured summary can independently
+prove completion. A
 structured summary must contain exactly one state marker with the complete
 schema, the current full commit SHA, `completed` status, and explicit `false`
 findings flags. An absent security review has all four fields set to `null`;
