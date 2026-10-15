@@ -226,19 +226,22 @@ export function codexStructuredSummaryResult(comment, headSha, requestedAt, sour
   const code = state.code_review;
   const security = state.security_review;
   if (code.commit_sha !== headSha) return null;
-  // Visible commit references must agree with the machine verdict too.
-  const visible = body.replace(matches[0][0], "");
-  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1])) ||
-      /(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible)) return "fail";
+  // Real findings survive a new request; abandoned non-final activity does not.
   if (code.has_any_findings === true || code.has_unresolved_findings === true ||
-      containsBlockingCodexSeverity(body) || hasConflictingCodexVerdict(visible)) return "fail";
+      containsBlockingCodexSeverity(body)) return "fail";
   const securityAbsent = Object.values(security).every((value) => value === null);
   if (!securityAbsent && security.commit_sha !== headSha) return null;
   if (!securityAbsent && (security.has_any_findings === true || security.has_unresolved_findings === true)) return "fail";
+  if (!isCommentAfterRequest(comment, requestedAt, sourceCommentId, true)) return null;
+  // Visible commit references must agree with the machine verdict too.
+  const visible = body.replace(matches[0][0], "");
+  if ([...visible.matchAll(/`([a-f0-9]{7,40})`/g)].some((match) => !headSha.startsWith(match[1])) ||
+      /(?:❌|⚠️|\*\*(?:Failed|In progress|Pending|Cancelled)\*\*)/i.test(visible) ||
+      hasConflictingCodexVerdict(visible)) return "fail";
   const clear = (value) => value.status === "completed" &&
     value.has_any_findings === false && value.has_unresolved_findings === false;
   if (!clear(code) || (!securityAbsent && !clear(security))) return "pending";
-  return isCommentAfterRequest(comment, requestedAt, sourceCommentId, true) ? "pass" : null;
+  return "pass";
 }
 
 export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, sourceCommentId) {

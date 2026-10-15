@@ -114,6 +114,19 @@ test("a new request never clears findings or unresolved threads", () => {
   assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), comment(summary().replace("**Completed**", "**In progress**"))] })), "fail");
 });
 
+test("stale non-final summaries cannot veto a later request, but findings survive", () => {
+  for (const status of ["pending", "running", "in_progress", "failed", "cancelled"]) {
+    const stale = { ...comment(summary({ ...clear, status })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" };
+    assert.equal(codexStructuredSummaryResult(stale, head, requestedAt, 30), null);
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [stale, comment(receipt)] })), "pass");
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [stale], reviews: [{ id: 1, commit_id: head, user, state: "COMMENTED", submitted_at: reviewedAt }] })), "pass");
+    const refreshed = { ...stale, updated_at: reviewedAt };
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [refreshed, comment(receipt)] })), "pending");
+    const findings = { ...stale, body: summary({ ...clear, status, has_any_findings: true }) };
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [findings, comment(receipt)] })), "fail");
+  }
+});
+
 test("requeue checks the live head after waiting and coalesces already evaluated updates", async () => {
   const run = { id: 42, event: "pull_request", head_sha: head, status: "completed", created_at: requestedAt, run_started_at: reviewedAt };
   for (const scenario of ["completed", "active", "stale", "duplicate", "absent"]) {
@@ -153,7 +166,8 @@ function runGate({ comments = [comment(receipt)], threads = [], moved = false, d
 }
 
 test("the executed gate validates receipt, edited summary, paginated threads and final head", () => {
-  for (const options of [{}, { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }] }]) {
+  for (const options of [{}, { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }] },
+    { comments: [{ ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" }, comment(receipt)] }]) {
     const result = runGate(options);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Codex Review passed/);
