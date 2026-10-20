@@ -145,18 +145,19 @@ test("requeue checks the live head after waiting and coalesces already evaluated
   }
 });
 
-function runGate({ comments = [comment(receipt)], threads = [], moved = false, dispatch = false }) {
+function runGate({ comments = [comment(receipt)], threads = [], moved = false, dispatch = false, reviews = [] }) {
   const directory = mkdtempSync(join(tmpdir(), "codex-gate-test-"));
   try {
     const marker = comment(createCodexReviewRequestMarkerBody({ headSha: head, requestId: "30-current-head", sourceCommentId: 30, sourceCommentCreatedAt: requestedAt, requestedAt }));
     marker.user = { login: "github-actions[bot]" };
-    const fixture = { comments: [marker, ...comments], threads, moved, head };
+    const fixture = { comments: [marker, ...comments], threads, moved, head, reviews };
     const preload = join(directory, "mock.mjs");
     writeFileSync(preload, `const fixture = ${JSON.stringify(fixture)}; let pulls = 0; globalThis.fetch = async (url, options) => {
       let data; const path = new URL(url).pathname;
       if (path === '/graphql') { const cursor = JSON.parse(options.body).variables.cursor; data = { data: { repository: { pullRequest: { reviewThreads: { nodes: cursor ? fixture.threads : [], pageInfo: { hasNextPage: !cursor, endCursor: cursor ? null : 'next' } } } } } }; }
       else if (path.endsWith('/pulls/1')) { pulls++; data = { head: { sha: fixture.moved && pulls >= 4 ? 'a'.repeat(40) : fixture.head } }; }
       else if (path.includes('/issues/1/comments')) data = fixture.comments;
+      else if (path.endsWith('/reviews')) data = fixture.reviews;
       else data = [];
       return { ok: true, json: async () => data };
     };`);
@@ -360,4 +361,28 @@ test("a mutable summary edit tied with the request stays pending despite its old
   const comments = [updated, answer];
   assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pending", "the lower ID dates creation, not the edit within this second");
   assert.equal(runGate({ comments }).status, 1);
+});
+
+
+test("a later completion supersedes an ambiguous same-second receipt edit", () => {
+  const edited = { ...comment(receipt.replace(":rocket:", "Swish!")), id: 29, created_at: "2026-10-15T19:00:00Z", updated_at: requestedAt };
+  const comments = [edited];
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pending");
+  comments.push(comment(summary()));
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pass");
+  assert.equal(runGate({ comments }).status, 0);
+});
+
+
+test("formal clean reviews supersede only strictly older pending comment evidence", () => {
+  const reviews = [{ id: 200, commit_id: head, state: "COMMENTED", user: user, submitted_at: "2026-10-15T22:00:00Z" }];
+  for (const body of [summary().replace('"completed"', '"running"'), summary().replace('"code_review":', '"code_review":broken')]) {
+    for (const [updated_at, expected] of [["2026-10-15T21:30:00Z", "pass"], ["2026-10-15T22:00:00Z", "pending"], ["2026-10-15T23:00:00Z", "pending"]]) {
+      const comments = [{ ...comment(body), updated_at }];
+      assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews })), expected);
+      assert.equal(runGate({ comments, reviews }).status, expected === "pass" ? 0 : 1);
+    }
+  }
+  const comments = [comment(receipt + "\nExtra line.")];
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews })), "pending", "formal proof never hides malformed receipt envelopes");
 });
