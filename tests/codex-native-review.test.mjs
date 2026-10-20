@@ -318,3 +318,15 @@ test("receipt edits cannot outrank newer pending or negative summaries", () => {
   const comments = [old, comment(summary())];
   assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pass", "editing a pre-request receipt does not rebind it");
 });
+
+
+test("editing unknown receipt text invalidates an older clean completion", () => {
+  const state = { ...comment(summary().replaceAll(reviewedAt, "2026-10-15T22:00:00Z")), updated_at: "2026-10-15T22:00:00Z" };
+  const answer = comment(receipt.replace(":rocket:", "Broken; avoid merging!"));
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [answer, state] })), "pass");
+  for (const created_at of [answer.created_at, "2026-10-15T19:00:00Z"]) {
+    const comments = [state, { ...answer, created_at, updated_at: "2026-10-15T23:00:00Z" }];
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pending");
+    assert.equal(runGate({ comments }).status, 1);
+  }
+});

@@ -85,8 +85,9 @@ machine completion independently supersedes that unstructured text. Later or
 same-second unfamiliar text requires a fresh machine completion. The legacy
 receipt parser itself remains strict; arbitrary prose never supplies approval.
 
-Receipt freshness and ordering use creation time; editing a receipt cannot renew
-its evidence or outrank a later pending verdict.
+Strict positive receipt freshness and ordering use creation time; an edit cannot
+renew approval or outrank a later pending verdict. Unknown or negative receipt
+edits retain their update time so they can invalidate an older clean completion.
 
 The visible code-review row must report the same head and a valid completion time
 strictly after the trusted request. That code completion time, rather than a
