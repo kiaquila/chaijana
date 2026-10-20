@@ -330,3 +330,13 @@ test("editing unknown receipt text invalidates an older clean completion", () =>
     assert.equal(runGate({ comments }).status, 1);
   }
 });
+
+
+test("same-second receipts preceding the request cannot veto a fresh answer", () => {
+  const previous = { ...comment(receipt), id: 29, created_at: requestedAt };
+  const comments = [previous, comment(receipt)];
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pass");
+  assert.equal(runGate({ comments }).status, 0);
+  const current = { ...previous, id: 31 };
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [current] })), "pass", "later numeric ID proves same-second freshness");
+});
