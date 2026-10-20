@@ -224,7 +224,7 @@ test("only newer structured proof supersedes an unfamiliar closing", () => {
     const answer = comment(receipt.replace(":rocket:", suffix));
     assert.equal(run([answer]), (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"));
     for (const newerState of [true, false]) {
-      const later = { ...(newerState ? { ...state, body: state.body.replaceAll(reviewedAt, "2026-10-15T22:00:00Z") } : answer), id: 99, updated_at: "2026-10-15T22:00:00Z" };
+      const later = { ...(newerState ? { ...state, body: state.body.replaceAll(reviewedAt, "2026-10-15T22:00:00Z") } : answer), id: 99, created_at: "2026-10-15T22:00:00Z", updated_at: "2026-10-15T22:00:00Z" };
       const answers = newerState ? [answer, later] : [state, later];
       assert.equal(run(answers), newerState ? "pass" : (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"), suffix);
       assert.equal(runGate({ comments: answers }).status, newerState || ["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? 0 : 1, suffix);
@@ -275,7 +275,7 @@ test("machine chronology does not interpret arbitrary prose as neutral", () => {
     const newer = { ...comment(summary().replaceAll(reviewedAt, "2026-10-15T22:00:00Z")), id: 99, updated_at: "2026-10-15T22:00:00Z" };
     assert.equal(run([answer]), "pending", suffix);
     assert.equal(run([answer, newer]), "pass", suffix);
-    assert.equal(run([comment(summary()), { ...answer, updated_at: "2026-10-15T22:00:00Z" }]), "pending", suffix);
+    assert.equal(run([comment(summary()), { ...answer, created_at: "2026-10-15T22:00:00Z", updated_at: "2026-10-15T22:00:00Z" }]), "pending", suffix);
     assert.equal(run([comment(summary()), answer]), "pending", suffix);
   }
 });
@@ -283,7 +283,7 @@ test("machine chronology does not interpret arbitrary prose as neutral", () => {
 test("security-only edits cannot renew code completion or supersede later receipts", () => {
   const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
   const state = comment(summary());
-  const unknown = { ...comment(receipt.replace(":rocket:", "Swish!")), updated_at: "2026-10-15T21:30:00Z" };
+  const unknown = { ...comment(receipt.replace(":rocket:", "Swish!")), created_at: "2026-10-15T21:30:00Z", updated_at: "2026-10-15T21:30:00Z" };
   const securityOnly = { ...state, updated_at: "2026-10-15T22:00:00Z" };
   assert.equal(run([unknown, securityOnly]), "pending");
   const staleCode = { ...securityOnly, body: state.body.replaceAll(reviewedAt, "2026-10-15T19:00:00Z") };
@@ -303,4 +303,18 @@ test("same-second request/completion ambiguity and impossible dates fail closed"
   assert.equal(run([ambiguous]), "pending");
   const impossible = { ...comment(summary().replaceAll(reviewedAt, "2026-02-30T21:00:00Z")), updated_at: "2026-10-15T22:00:00Z" };
   assert.equal(isAffirmativeCodexReviewState(impossible, head, "2026-02-28T20:00:00Z", 10), false);
+});
+
+
+test("receipt edits cannot outrank newer pending or negative summaries", () => {
+  const edited = { ...comment(receipt), updated_at: "2026-10-15T23:00:00Z" };
+  for (const status of ["running", "failed"]) {
+    const pending = { ...comment(summary().replace('"completed"', JSON.stringify(status))), updated_at: "2026-10-15T22:00:00Z" };
+    const comments = [edited, pending];
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pending");
+    assert.equal(runGate({ comments }).status, 1);
+  }
+  const old = { ...edited, created_at: "2026-10-15T19:00:00Z" };
+  const comments = [old, comment(summary())];
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments })), "pass", "editing a pre-request receipt does not rebind it");
 });
