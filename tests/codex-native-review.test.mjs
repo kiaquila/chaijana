@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import {
   createCodexReviewRequestMarkerBody,
   evaluateCodexReviewEvidence,
+  isAffirmativeCodexReviewState,
   isAcceptableCodexSummaryComment
 } from "../scripts/codex-review-helpers.mjs";
 import { rerunCodexReviewForHead, shouldRouteCodexReviewRerunEvent } from "../scripts/codex-review-rerun.mjs";
@@ -32,7 +33,7 @@ const observedReceipts = [
 const comment = (body) => ({ id: 31, body, user, created_at: reviewedAt, updated_at: reviewedAt });
 const clear = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: "completed" };
 const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
-const summary = (code = clear, security = absent) => `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: code, security_review: security })} -->\n\n## Codex Review Summary\n\n| 📝 **Code Review** | ✅ **Completed** | \`2667f79\` | Manual request |\n\n${details}`;
+const summary = (code = clear, security = absent) => `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 ${JSON.stringify({ code_review: code, security_review: security })} -->\n\n## Codex Review Summary\n\n| 📝 **Code Review** | ✅ **Completed** <relative-time datetime="${reviewedAt}">${reviewedAt}</relative-time> | \`2667f79\` | Manual request |\n\n${details}`;
 const accept = (body) => isAcceptableCodexSummaryComment(comment(body), head, requestedAt, 30);
 
 test("native receipt and legacy retain explicit positive head-bound verdicts", () => {
@@ -223,13 +224,13 @@ test("only newer structured proof supersedes an unfamiliar closing", () => {
     const answer = comment(receipt.replace(":rocket:", suffix));
     assert.equal(run([answer]), (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"));
     for (const newerState of [true, false]) {
-      const later = { ...(newerState ? state : answer), id: 99, updated_at: "2026-10-15T22:00:00Z" };
+      const later = { ...(newerState ? { ...state, body: state.body.replaceAll(reviewedAt, "2026-10-15T22:00:00Z") } : answer), id: 99, updated_at: "2026-10-15T22:00:00Z" };
       const answers = newerState ? [answer, later] : [state, later];
       assert.equal(run(answers), newerState ? "pass" : (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"), suffix);
       assert.equal(runGate({ comments: answers }).status, newerState || ["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? 0 : 1, suffix);
     }
   }
-  for (const suffix of ["But there is a regression.", "Authentication leaks credentials.", "The deployment deletes all customer data.", "Status: completed", "Swish! <!-- unknown -->", "Swish!\nExtra line.", "P0 finding", "P1 finding", "P2 finding"]) {
+  for (const suffix of ["Swish! <!-- unknown -->", "Swish!\nExtra line.", "P0 finding", "P1 finding", "P2 finding"]) {
     assert.equal(run([state, comment(receipt.replace(":rocket:", suffix))]), "pending", suffix);
   }
   for (const bad of [summary().replace('"completed"', '"running"'), summary().replace('"has_any_findings":false', '"has_any_findings":true'), summary().replace('"code_review":', '"code_review":{},"code_review":'), summary().replace('"status":"completed"', '"extra":false,"status":"completed"'), summary().replace('"status":"completed"', '"status":true'), summary().replace('"status":null', '"status":"running"'), summary().replace('"commit_sha":null', '"commit_sha":"' + "f".repeat(40) + '"'), summary().replace('"code_review":', '"code_review":broken'), summary() + "\n<!-- codex-review-state:v1 {} -->"]) {
@@ -265,4 +266,41 @@ test("affirmative machine state never hides native P0-P2 findings", () => {
     const reviews = [{ id: 1, commit_id: head, state: "COMMENTED", user: user, submitted_at: reviewedAt, body: `P${priority}: actionable finding` }];
     assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(summary())], reviews })), "fail");
   }
+});
+
+test("machine chronology does not interpret arbitrary prose as neutral", () => {
+  const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
+  for (const suffix of ["Broken; avoid merging!", "Do not merge.", "A vulnerability remains.", "Needs work.", "No worries!"]) {
+    const answer = comment(receipt.replace(":rocket:", suffix));
+    const newer = { ...comment(summary().replaceAll(reviewedAt, "2026-10-15T22:00:00Z")), id: 99, updated_at: "2026-10-15T22:00:00Z" };
+    assert.equal(run([answer]), "pending", suffix);
+    assert.equal(run([answer, newer]), "pass", suffix);
+    assert.equal(run([comment(summary()), { ...answer, updated_at: "2026-10-15T22:00:00Z" }]), "pending", suffix);
+    assert.equal(run([comment(summary()), answer]), "pending", suffix);
+  }
+});
+
+test("security-only edits cannot renew code completion or supersede later receipts", () => {
+  const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
+  const state = comment(summary());
+  const unknown = { ...comment(receipt.replace(":rocket:", "Swish!")), updated_at: "2026-10-15T21:30:00Z" };
+  const securityOnly = { ...state, updated_at: "2026-10-15T22:00:00Z" };
+  assert.equal(run([unknown, securityOnly]), "pending");
+  const staleCode = { ...securityOnly, body: state.body.replaceAll(reviewedAt, "2026-10-15T19:00:00Z") };
+  assert.equal(run([staleCode]), "pending");
+  // Real native rows carry subsecond timestamps but GitHub's updated_at is
+  // truncated to seconds. Same-second unknown prose still wins conservatively.
+  const fractional = { ...state, body: state.body.replaceAll(reviewedAt, reviewedAt.replace("Z", ".070069Z")) };
+  assert.equal(run([fractional]), "pass");
+  assert.equal(run([fractional, comment(receipt.replace(":rocket:", "Swish!"))]), "pending");
+  const future = { ...state, body: state.body.replaceAll(reviewedAt, "2026-10-15T23:00:00Z") };
+  assert.equal(run([future]), "pending");
+});
+
+test("same-second request/completion ambiguity and impossible dates fail closed", () => {
+  const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
+  const ambiguous = { ...comment(summary().replaceAll(reviewedAt, requestedAt.replace("Z", ".070069Z"))), updated_at: requestedAt };
+  assert.equal(run([ambiguous]), "pending");
+  const impossible = { ...comment(summary().replaceAll(reviewedAt, "2026-02-30T21:00:00Z")), updated_at: "2026-10-15T22:00:00Z" };
+  assert.equal(isAffirmativeCodexReviewState(impossible, head, "2026-02-28T20:00:00Z", 10), false);
 });

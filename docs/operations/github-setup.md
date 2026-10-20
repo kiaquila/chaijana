@@ -77,13 +77,24 @@ closed. The summary's update must follow the current trusted request (same-secon
 ordering uses comment IDs). A newer pending, malformed, wrong-head or negative
 summary supersedes old clean state; ambiguous equal-time state fails closed.
 
-This deliberately upgrades structured state from a wakeup-only signal to a
-strictly validated verdict. Headings, thumbs-up reactions and prose never prove
-completion. An unfamiliar single-line closing stays pending until a strictly newer
-affirmative machine summary supersedes it. A later or equal-time unfamiliar
-receipt requires a fresh summary. Malformed receipts,
-contradictory prose and duplicate metadata cannot be rescued by structured state.
-The legacy receipt parser retains its strict fallback for already-known formats.
+This deliberately upgrades structured state from a wakeup-only signal to an
+independent machine verdict. It also replaces semantic guessing about arbitrary
+receipt suffixes with explicit chronology: every unfamiliar receipt is pending,
+including apparently positive or negative prose. A strictly newer affirmative
+machine completion independently supersedes that unstructured text. Later or
+same-second unfamiliar text requires a fresh machine completion. The legacy
+receipt parser itself remains strict; arbitrary prose never supplies approval.
+
+The visible code-review row must report the same head and a valid completion time
+strictly after the trusted request. That code completion time, rather than a
+summary's `updated_at`, determines affirmative evidence order: a security-only
+edit cannot renew an older code verdict or supersede later receipt text. GitHub's
+second-precision comment timestamps and subsecond completion rows are compared in
+second buckets, with ambiguous ties pending. Headings and reactions never prove
+completion. Native P0–P2 findings, unresolved threads and malformed receipt
+envelopes remain vetoes, including duplicate verdict/SHA fields, unknown markers,
+extra lines and explicit P0–P2 receipt findings. Contradictory visible summary
+status invalidates the machine summary itself.
 
 All unresolved review threads block success, including threads on earlier heads.
 A new request cannot discard a current-head negative formal review. P0–P2
