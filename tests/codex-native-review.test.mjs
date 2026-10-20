@@ -18,6 +18,7 @@ const reviewedAt = "2026-10-15T21:01:00Z";
 const details = '<details> <summary>ℹ️ About Codex in GitHub</summary>\n<br/>\nCodex reacts with 👍 once reviews finish.\n</details>';
 const legacy = "Codex Review: Didn't find any major issues. :rocket:\n\n**Reviewed commit:** `2667f79cd7`";
 const receipt = `<!-- codex-review-receipt:v1 -->\n\n${legacy}\n\n${details}`;
+const observedReceipt = `<!-- codex-review-receipt:v1 -->\n\nCodex Review: Didn't find any major issues. Another round soon, please!\n\n**Reviewed commit:** \`2667f79cd7\`\n\n${details}`;
 const comment = (body) => ({ id: 31, body, user, created_at: reviewedAt, updated_at: reviewedAt });
 const clear = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: "completed" };
 const absent = { commit_sha: null, has_any_findings: null, has_unresolved_findings: null, status: null };
@@ -25,7 +26,7 @@ const summary = (code = clear, security = absent) => `<!-- codex-pull-request-re
 const accept = (body) => isAcceptableCodexSummaryComment(comment(body), head, requestedAt, 30);
 
 test("native receipt and legacy retain explicit positive head-bound verdicts", () => {
-  for (const body of [legacy, receipt, receipt.replace(":rocket:", "Keep it up!"), receipt.replace(":rocket:", "Chef's kiss."), receipt.replace(":rocket:", "Nice work!"), receipt.replace(":rocket:", "Keep them coming!"), receipt.replace(":rocket:", "Chef’s kiss."), legacy.replace(head.slice(0, 10), head)]) assert.equal(accept(body), true);
+  for (const body of [legacy, receipt, observedReceipt, receipt.replace(":rocket:", "Keep it up!"), receipt.replace(":rocket:", "Chef's kiss."), receipt.replace(":rocket:", "Nice work!"), receipt.replace(":rocket:", "Keep them coming!"), receipt.replace(":rocket:", "Chef’s kiss."), legacy.replace(head.slice(0, 10), head)]) assert.equal(accept(body), true);
   for (const body of [
     receipt.replace("2667f79cd7", "0000000000"), receipt.replace("2667f79cd7", head.slice(0, 9)),
     receipt.replace(/\*\*Reviewed commit:.*\n/, ""), receipt.replace("Didn't find any major issues.", "Found issues."),
@@ -34,6 +35,8 @@ test("native receipt and legacy retain explicit positive head-bound verdicts", (
     receipt.replace(":rocket:", "However, review failed."),
     receipt.replace(":rocket:", "Except there is a critical regression."),
     receipt.replace(":rocket:", "Unrecognized sign-off."),
+    observedReceipt.replace("Another round soon, please!", "Another round soon, please?"),
+    observedReceipt.replace("Another round soon, please!", "Another round soon, please! But there is a regression."),
     receipt.replace("<br/>", "<br/> Except there is a critical regression."),
     `${receipt}\nP2 unresolved regression`, `${receipt}\n${legacy}`, receipt.replace("v1 -->", "v2 -->"),
     `<!-- codex-review-receipt:v1 -->\n${receipt}`, receipt.replace("<br/>", "<br/>\nP3 note and P1 regression"),
@@ -145,7 +148,7 @@ function runGate({ comments = [comment(receipt)], threads = [], moved = false, d
 }
 
 test("the executed gate validates receipt evidence, paginated threads and final head", () => {
-  for (const options of [{}, { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }, comment(receipt)] },
+  for (const options of [{}, { comments: [comment(observedReceipt)] }, { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }, comment(receipt)] },
     { comments: [{ ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" }, comment(receipt)] },
     { comments: [comment(summary({ ...clear, status: "failed" })), { ...comment(receipt), created_at: "2026-10-15T21:02:00Z", updated_at: "2026-10-15T21:02:00Z" }] }]) {
     const result = runGate(options);
