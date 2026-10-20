@@ -209,6 +209,111 @@ export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, s
     (body.match(/<!--/g) || []).length === (body.startsWith("<!-- codex-review-receipt:v1 -->") ? 1 : 0);
 }
 
+function codeReviewCompletedAt(body, headSha) {
+  const rows = [...body.matchAll(/^\| 📝 \*\*Code Review\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7,40})` \| [^|\r\n]+ \|$/gm)];
+  if (rows.length !== 1 || (body.match(/\*\*Code Review\*\*/g) || []).length !== 1) return NaN;
+  const [, timestamp, visibleTime, sha] = rows[0];
+  if (timestamp !== visibleTime || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(timestamp) || !headSha.startsWith(sha)) return NaN;
+  const completed = Date.parse(timestamp);
+  return Number.isFinite(completed) && new Date(completed).toISOString().slice(0, 19) === timestamp.slice(0, 19) ? completed : NaN;
+}
+
+/** Affirmative machine evidence has a closed schema and the full current SHA.
+ * Prose, reactions and the visible Completed heading never grant approval. */
+export function isAffirmativeCodexReviewState(comment, headSha, requestedAt, requestCommentId) {
+  if (!isTrustedCodexLogin(comment?.user?.login) || !/^[a-f0-9]{40}$/.test(headSha)) return false;
+  const body = String(comment?.body || "").trim();
+  const match = body.match(/^<!-- codex-pull-request-review-summary -->\s*<!-- codex-review-state:v1 (\{[^\r\n]*\}) -->/);
+  if (!match || (body.match(/<!--/g) || []).length !== 2 ||
+      (body.match(/codex-review-state:/g) || []).length !== 1 ||
+      (body.match(/codex-pull-request-review-summary/g) || []).length !== 1 ||
+      /Codex Review:|\*\*Reviewed commit:|\bP[0-2]\b/i.test(body)) return false;
+  const presentation = body.slice(match[0].length).replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "");
+  if (!/^\s*## Codex Review Summary\b/.test(presentation) ||
+      /<details>|<summary>|\b(?:found|unresolved|issues?|findings?|failed|failure|running|pending|cancelled|incomplete|in.progress|not.completed|changes.requested|security.concerns?)\b/i.test(presentation)) return false;
+  if ([...presentation.matchAll(/\b[a-f0-9]{7,40}\b/gi)].some(([sha]) => !headSha.startsWith(sha))) return false;
+  const observed = Date.parse(comment.updated_at || comment.created_at || "");
+  const requested = Date.parse(requestedAt || "");
+  const completed = codeReviewCompletedAt(body, headSha);
+  if (!Number.isFinite(completed) || Math.floor(completed / 1000) <= Math.floor(requested / 1000) || completed >= observed + 1000 ||
+      !Number.isFinite(observed) || !Number.isFinite(requested) ||
+      !(observed > requested || (observed === requested && compareNumericIds(comment.id, requestCommentId) > 0))) return false;
+  try {
+    const state = JSON.parse(match[1]);
+    const keys = Object.keys(state);
+    if (keys.length !== 2 || !keys.includes("code_review") || !keys.includes("security_review")) return false;
+    // Count decoded property names as well: JSON.parse alone accepts duplicate
+    // keys, including keys escaped with Unicode sequences.
+    const names = [...match[1].matchAll(/("(?:\\.|[^"\\])*")\s*:/g)].map((entry) => JSON.parse(entry[1]));
+    const expected = { code_review: 1, security_review: 1, commit_sha: 2, has_any_findings: 2, has_unresolved_findings: 2, status: 2 };
+    if (names.length !== 10 || Object.entries(expected).some(([key, count]) => names.filter((name) => name === key).length !== count)) return false;
+    const closed = (value) => value && !Array.isArray(value) && Object.keys(value).length === 4 &&
+      ["commit_sha", "has_any_findings", "has_unresolved_findings", "status"].every((key) => Object.hasOwn(value, key));
+    const complete = (value) => closed(value) && value.commit_sha === headSha && value.status === "completed" &&
+      value.has_any_findings === false && value.has_unresolved_findings === false;
+    const absent = (value) => closed(value) && Object.values(value).every((entry) => entry === null);
+    return complete(state.code_review) && (absent(state.security_review) || complete(state.security_review));
+  } catch { return false; }
+}
+
+function latestCodexCommentResult(comments, headSha, requestedAt, requestCommentId, nativeCompletedAt = NaN) {
+  const signals = comments.filter((comment) => isTrustedCodexLogin(comment?.user?.login));
+  const summaries = signals.filter((comment) => /codex-pull-request-review-summary|codex-review-state:/.test(String(comment.body || "")) &&
+    Date.parse(comment.updated_at || comment.created_at || "") >= Date.parse(requestedAt || ""));
+  summaries.sort((a, b) => (Date.parse(b.updated_at || b.created_at || "") || 0) -
+    (Date.parse(a.updated_at || a.created_at || "") || 0) || compareNumericIds(b.id, a.id));
+  const receiptObservedAt = (comment) => Date.parse(isAcceptableCodexSummaryComment(comment, headSha)
+    ? comment.created_at || "" : comment.updated_at || comment.created_at || "");
+  const receipts = signals.filter((comment) => /Codex Review:|codex-review-receipt:/.test(String(comment.body || "")) &&
+    (isAcceptableCodexSummaryComment(comment, headSha)
+      ? isAcceptableCodexSummaryComment(comment, headSha, requestedAt, requestCommentId)
+      : receiptObservedAt(comment) >= Date.parse(requestedAt || "")));
+  const isReceiptCandidate = (comment) => {
+    const body = String(comment.body || "");
+    const match = body.match(/(Codex Review: Didn't find any major issues\.)([^\r\n]*)/);
+    if (!match || (match[2] && !match[2].startsWith(" ")) || match[2].length > 121 ||
+        (body.match(/Codex Review:/g) || []).length !== 1 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>{}\[\]`*=\\/|]/u.test(match[2]) ||
+        /\b[a-f0-9]{7,40}\b/i.test(match[2]) || containsBlockingCodexSeverity(body)) return false;
+    return isAcceptableCodexSummaryComment({ ...comment, body: body.replace(match[0], match[1]) }, headSha);
+  };
+  // Unknown closings remain pending evidence. Only a strictly newer complete
+  // machine summary supersedes one; a later receipt needs a fresh summary.
+  // Malformed envelopes and explicit P0-P2 findings remain unconditional vetoes.
+  if (receipts.some((comment) => !isAcceptableCodexSummaryComment(comment, headSha, requestedAt, requestCommentId) && !isReceiptCandidate(comment))) return "pending";
+  const candidates = [...summaries, ...receipts];
+  if (!candidates.length) return null;
+  const observed = (comment) => summaries.includes(comment) &&
+    isAffirmativeCodexReviewState(comment, headSha, requestedAt, requestCommentId)
+    ? codeReviewCompletedAt(String(comment.body || ""), headSha)
+    : summaries.includes(comment) ? Date.parse(comment.updated_at || comment.created_at || "") : receiptObservedAt(comment);
+  // Positive receipt edits never renew approval. Unknown or negative edits
+  // retain their update time so they can invalidate an older completion.
+  // GitHub comment timestamps have second precision while completion rows
+  // include microseconds. Compare second buckets so uncertainty stays pending.
+  const bucket = (comment) => Math.floor(observed(comment) / 1000);
+  const latestTime = Math.max(...candidates.map(bucket));
+  // A strictly newer formal clean review is independent affirmative evidence.
+  // Same-second ambiguity and newer pending comments still prevent approval.
+  const lastAffirmativeTime = Math.max(...summaries.filter((comment) =>
+    isAffirmativeCodexReviewState(comment, headSha, requestedAt, requestCommentId)
+  ).map(bucket));
+  const unclearedFindings = summaries.some((comment) => bucket(comment) >= lastAffirmativeTime &&
+    [...String(comment.body || "").matchAll(/("(?:\\.|[^"\\])*")\s*:\s*(true|false|null)/g)]
+      .some((entry) => {
+        if (entry[2] !== "true") return false;
+        try { return ["has_any_findings", "has_unresolved_findings"].includes(JSON.parse(entry[1])); }
+        catch { return true; }
+      }));
+  // Code-only formal approval cannot revise an explicit code/security finding.
+  // Only a newer affirmative structured state clears that independent signal.
+  if (unclearedFindings) return "pending";
+  if (Math.floor(nativeCompletedAt / 1000) > latestTime) return "pass";
+  const latest = candidates.filter((comment) => bucket(comment) === latestTime);
+  return latest.every((comment) => summaries.includes(comment)
+    ? isAffirmativeCodexReviewState(comment, headSha, requestedAt, requestCommentId)
+    : isAcceptableCodexSummaryComment(comment, headSha, requestedAt, requestCommentId)) ? "pass" : "pending";
+}
+
 export function evaluateCodexReviewEvidence({ comments, reviews, reviewComments, threads, headSha, requestMarker }) {
   // Findings survive a new request marker, including findings on earlier heads.
   if (threads.some((thread) => !thread.isResolved)) return "fail";
@@ -216,12 +321,13 @@ export function evaluateCodexReviewEvidence({ comments, reviews, reviewComments,
   const native = latestCodexNativeReviewResult(reviews.filter((review) =>
     isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker)
   ), reviewComments, headSha);
-  if (native) return native;
-  // Structured summaries wake the gate on creation/edits, but their JSON,
-  // visible status, timestamps, and reactions cannot supply a review verdict.
-  return comments.some((comment) => isAcceptableCodexSummaryComment(
-    comment, headSha,
+  if (native === "fail") return native;
+  const nativeCompletedAt = native === "pass" ? Math.max(...reviews.filter((review) =>
+    isStrictlyAfterCodexReviewRequest(review.submitted_at, requestMarker) &&
+    classifyCodexNativeReview(review, reviewComments, headSha) === "pass"
+  ).map((review) => Date.parse(review.submitted_at || ""))) : NaN;
+  const commentResult = latestCodexCommentResult(comments, headSha,
     requestMarker.sourceCommentCreatedAt || requestMarker.requestedAt || requestMarker.commentCreatedAt,
-    requestMarker.sourceCommentId
-  )) ? "pass" : "pending";
+    requestMarker.sourceCommentId, nativeCompletedAt);
+  return commentResult === "pending" ? "pending" : native || commentResult || "pending";
 }
