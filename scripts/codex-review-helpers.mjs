@@ -180,7 +180,7 @@ export function isCodexReviewSignal(body) {
 }
 
 function hasConflictingCodexVerdict(body) {
-  return /\b(?:found (?:any )?(?:issues|findings)|changes requested|unresolved findings|review (?:pending|in progress|failed)|but|however|except|critical|blocker|regression|bugs?)\b/i.test(body);
+  return /\b(?:found (?:any )?(?:issues|findings)|changes requested|needs? changes|unresolved findings|review (?:pending|in progress|failed)|issues? remain|not (?:approved|clean)|cannot approve|but|however|except|critical|blocker|regression|bugs?)\b/i.test(body);
 }
 
 function isCommentAfterRequest(comment, requestedAt, sourceCommentId) {
@@ -198,9 +198,10 @@ export function isAcceptableCodexSummaryComment(comment, headSha, requestedAt, s
       !/^[a-f0-9]{40}$/.test(String(headSha || "")) ||
       !isCommentAfterRequest(comment, requestedAt, sourceCommentId) ||
       containsBlockingCodexSeverity(body) || hasConflictingCodexVerdict(body)) return false;
-  // Preserve the native legacy sentence and optional informational details. The
-  // receipt marker is optional, unique, and must precede the verdict.
-  const match = body.trim().match(/^(?:<!-- codex-review-receipt:v1 -->\s*)?Codex Review: Didn't find any major issues\.(?: :rocket:| 🚀| Keep it up!| Chef['’]s kiss\.| Keep them coming!| Nice work!| Another round soon, please!| Breezy!| What shall we delve into next\?)?\s+\*\*Reviewed commit:\*\*\s*`([a-f0-9]{10}|[a-f0-9]{40})`(?:\s*<details>\s*<summary>[^<]*About Codex in GitHub<\/summary>[\s\S]*<\/details>)?$/);
+  // The clean verdict sentence is stable, while Codex's presentation-only
+  // sign-off varies. Keep that flourish single-line and bounded. The receipt
+  // marker is optional, unique, and must precede the verdict.
+  const match = body.trim().match(/^(?:<!-- codex-review-receipt:v1 -->\s*)?Codex Review: Didn't find any major issues\.(?: [^\r\n]{1,120})?\s+\*\*Reviewed commit:\*\*\s*`([a-f0-9]{10}|[a-f0-9]{40})`(?:\s*<details>\s*<summary>[^<]*About Codex in GitHub<\/summary>[\s\S]*<\/details>)?$/);
   return Boolean(match) &&
     (match[1] === headSha || match[1] === headSha.slice(0, 10)) &&
     (body.match(/Codex Review:/g) || []).length === 1 &&

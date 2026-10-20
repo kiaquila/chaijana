@@ -22,7 +22,8 @@ const observedReceipt = `<!-- codex-review-receipt:v1 -->\n\nCodex Review: Didn'
 const observedReceipts = [
   observedReceipt,
   observedReceipt.replace("Another round soon, please!", "Breezy!"),
-  observedReceipt.replace("Another round soon, please!", "What shall we delve into next?")
+  observedReceipt.replace("Another round soon, please!", "What shall we delve into next?"),
+  observedReceipt.replace("Another round soon, please!", "Can't wait for the next one!")
 ];
 const comment = (body) => ({ id: 31, body, user, created_at: reviewedAt, updated_at: reviewedAt });
 const clear = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: "completed" };
@@ -39,8 +40,9 @@ test("native receipt and legacy retain explicit positive head-bound verdicts", (
     receipt.replace(":rocket:", "But there is a regression."),
     receipt.replace(":rocket:", "However, review failed."),
     receipt.replace(":rocket:", "Except there is a critical regression."),
-    receipt.replace(":rocket:", "Unrecognized sign-off."),
-    observedReceipt.replace("Another round soon, please!", "Another round soon, please?"),
+    receipt.replace(":rocket:", "Not approved."),
+    receipt.replace(":rocket:", "A".repeat(121)),
+    receipt.replace(":rocket:", "Two lines.\nStill clean."),
     observedReceipt.replace("Another round soon, please!", "Another round soon, please! But there is a regression."),
     receipt.replace("<br/>", "<br/> Except there is a critical regression."),
     `${receipt}\nP2 unresolved regression`, `${receipt}\n${legacy}`, receipt.replace("v1 -->", "v2 -->"),
