@@ -89,6 +89,10 @@ Strict positive receipt freshness and ordering use creation time; an edit cannot
 renew approval or outrank a later pending verdict. Unknown or negative receipt
 edits retain their update time so they can invalidate an older clean completion.
 
+A mutable summary updated in the request’s second remains ambiguous even if its
+original comment ID is lower: that ID dates creation, not the edit. Such ties
+stay pending; a fresh request or completion in a later second removes ambiguity.
+
 The visible code-review row must report the same head and a valid completion time
 strictly after the trusted request. That code completion time, rather than a
 summary's `updated_at`, determines affirmative evidence order: a security-only
