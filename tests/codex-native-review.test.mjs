@@ -23,7 +23,8 @@ const observedReceipts = [
   observedReceipt,
   observedReceipt.replace("Another round soon, please!", "Breezy!"),
   observedReceipt.replace("Another round soon, please!", "What shall we delve into next?"),
-  observedReceipt.replace("Another round soon, please!", "Can't wait for the next one!")
+  observedReceipt.replace("Another round soon, please!", "Can't wait for the next one!"),
+  observedReceipt.replace("Another round soon, please!", ":+1:")
 ];
 const comment = (body) => ({ id: 31, body, user, created_at: reviewedAt, updated_at: reviewedAt });
 const clear = { commit_sha: head, has_any_findings: false, has_unresolved_findings: false, status: "completed" };
