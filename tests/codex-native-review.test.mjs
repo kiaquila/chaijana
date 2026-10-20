@@ -98,9 +98,9 @@ test("a new request never clears findings or unresolved threads", () => {
 
 });
 
-test("structured summaries only wake the gate and never supply a verdict", () => {
+test("structured state requires an exact closed affirmative schema", () => {
   for (const body of [
-    summary(), summary({ ...clear, status: "running" }),
+    summary({ ...clear, status: "running" }),
     summary({ ...clear, has_any_findings: true, has_unresolved_findings: true }),
     summary({ ...clear, status: "failed" }), summary({ ...clear, status: "cancelled" }),
     summary({ ...clear, commit_sha: "a".repeat(40) }), summary({ ...clear, commit_sha: null }),
@@ -111,8 +111,9 @@ test("structured summaries only wake the gate and never supply a verdict", () =>
     summary().replace("`2667f79`", "`0000000`"), "## Codex Review Summary\nCompleted 👍"
   ]) {
     assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(body)] })), "pending", body);
-    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [{ ...comment(body), created_at: "2026-10-15T20:00:00Z", updated_at: reviewedAt }] })), "pending", "edits cannot turn a summary into approval");
+
   }
+  assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(summary())] })), "pass");
   const receiptAndSummary = evidence({ comments: [comment(receipt), comment(summary())] });
   assert.equal(evaluateCodexReviewEvidence(receiptAndSummary), "pass");
   assert.equal(evaluateCodexReviewEvidence({ ...receiptAndSummary, threads: [{ isResolved: false }] }), "fail");
@@ -165,12 +166,12 @@ function runGate({ comments = [comment(receipt)], threads = [], moved = false, d
 test("the executed gate validates receipt evidence, paginated threads and final head", () => {
   for (const options of [{}, ...observedReceipts.map((body) => ({ comments: [comment(body)] })), { comments: [{ ...comment(summary()), created_at: "2026-10-15T20:00:00Z" }, comment(receipt)] },
     { comments: [{ ...comment(summary({ ...clear, status: "running" })), created_at: "2026-10-15T20:00:00Z", updated_at: "2026-10-15T20:01:00Z" }, comment(receipt)] },
-    { comments: [comment(summary({ ...clear, status: "failed" })), { ...comment(receipt), created_at: "2026-10-15T21:02:00Z", updated_at: "2026-10-15T21:02:00Z" }] }]) {
+    { comments: [comment(summary()), comment(receipt)] }]) {
     const result = runGate(options);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Codex Review passed/);
   }
-  for (const options of [{ comments: [comment(summary())] }, { threads: [{ isResolved: false }] }, { comments: [comment("Completed 👍")] }, { comments: [comment(receipt.replace("2667f79cd7", "0000000000"))] }, { moved: true, dispatch: true }]) {
+  for (const options of [{ comments: [comment(summary({ ...clear, status: "running" }))] }, { comments: [comment(summary({ ...clear, status: "failed" })), comment(receipt)] }, { threads: [{ isResolved: false }] }, { comments: [comment("Completed 👍")] }, { comments: [comment(receipt.replace("2667f79cd7", "0000000000"))] }, { moved: true, dispatch: true }]) {
     const result = runGate(options);
     assert.equal(result.status, 1, result.stdout);
     assert.doesNotMatch(result.stdout, /Codex Review passed/);
@@ -210,5 +211,58 @@ test("the executed request script coalesces only runs started after marker publi
       assert.match(writes[0].body.body, /CODEX_REVIEW_SOURCE_COMMENT_CREATED_AT: 2026-10-15T21:00:00Z/);
       assert.equal(writes.filter((write) => write.path.endsWith('/rerun')).length, startedAfterMarker ? 0 : 1);
     } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+});
+
+// Independent machine completion permits any neutral closing without teaching
+// the legacy receipt parser new phrases. The receipt itself remains strict.
+test("only newer structured proof supersedes an unfamiliar closing", () => {
+  const run = (answers) => evaluateCodexReviewEvidence(evidence({ comments: answers }));
+  const state = comment(summary());
+  for (const suffix of ["Swish!", "Chef's kiss.", "Chef’s kiss.", "No worries!", "A whimsical flourish.", "Sunshine and confetti! 🎉"]) {
+    const answer = comment(receipt.replace(":rocket:", suffix));
+    assert.equal(run([answer]), (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"));
+    for (const newerState of [true, false]) {
+      const later = { ...(newerState ? state : answer), id: 99, updated_at: "2026-10-15T22:00:00Z" };
+      const answers = newerState ? [answer, later] : [state, later];
+      assert.equal(run(answers), newerState ? "pass" : (["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? "pass" : "pending"), suffix);
+      assert.equal(runGate({ comments: answers }).status, newerState || ["Chef's kiss.", "Chef’s kiss."].includes(suffix) ? 0 : 1, suffix);
+    }
+  }
+  for (const suffix of ["But there is a regression.", "Authentication leaks credentials.", "The deployment deletes all customer data.", "Status: completed", "Swish! <!-- unknown -->", "Swish!\nExtra line.", "P0 finding", "P1 finding", "P2 finding"]) {
+    assert.equal(run([state, comment(receipt.replace(":rocket:", suffix))]), "pending", suffix);
+  }
+  for (const bad of [summary().replace('"completed"', '"running"'), summary().replace('"has_any_findings":false', '"has_any_findings":true'), summary().replace('"code_review":', '"code_review":{},"code_review":'), summary().replace('"status":"completed"', '"extra":false,"status":"completed"'), summary().replace('"status":"completed"', '"status":true'), summary().replace('"status":null', '"status":"running"'), summary().replace('"commit_sha":null', '"commit_sha":"' + "f".repeat(40) + '"'), summary().replace('"code_review":', '"code_review":broken'), summary() + "\n<!-- codex-review-state:v1 {} -->"]) {
+    const newer = { ...comment(bad), id: 100, updated_at: "2026-10-15T22:00:00Z" };
+    assert.equal(run([state, newer]), "pending", bad);
+    assert.equal(runGate({ comments: [state, newer] }).status, 1);
+  }
+  assert.equal(run([{ ...state, updated_at: "2026-10-15T19:00:00Z" }]), "pending");
+  assert.equal(run([{ ...state, user: { login: "fake-codex[bot]" } }]), "pending");
+});
+
+test("latest malformed, negative or ambiguous summary supersedes clean state", () => {
+  const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
+  const clean = comment(summary());
+  for (const body of [summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
+    const invalid = { ...comment(body), id: 1 };
+    assert.equal(run([clean, invalid]), "pending", body);
+    assert.equal(run([invalid, clean]), "pending", body);
+    assert.equal(run([clean, { ...invalid, updated_at: "2026-10-15T22:00:00Z" }]), "pending", body);
+  }
+});
+
+test("visible contradictions and latest pending state veto positive formal review", () => {
+  const reviews = [{ id: 1, commit_id: head, state: "COMMENTED", user: user, submitted_at: reviewedAt }];
+  const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments, reviews }));
+  for (const body of [summary().replace("## Codex Review Summary", "## Unknown Summary"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nFound unresolved issues."), summary().replace("## Codex Review Summary", "## Codex Review Summary\nSecurity Review failed."), summary().replace("## Codex Review Summary", "## Codex Review Summary\nCode Review running."), summary().replace('"completed"', '"running"'), summary().replace('"status":null', '"status":"running"')]) {
+    assert.equal(run([comment(body)]), "pending", body);
+  }
+});
+
+test("affirmative machine state never hides native P0-P2 findings", () => {
+  for (const priority of [0, 1, 2]) {
+    const reviews = [{ id: 1, commit_id: head, state: "COMMENTED", user: user, submitted_at: reviewedAt, body: `P${priority}: actionable finding` }];
+    assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(summary())], reviews })), "fail");
   }
 });

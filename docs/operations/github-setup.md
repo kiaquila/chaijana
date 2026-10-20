@@ -67,13 +67,23 @@ explicit no-major-issues sentence and the exact native ten-character head prefix
 ASCII and typographic apostrophes; unknown or contradictory prose fails closed.
 Malformed, duplicate, stale, and impersonated receipts cannot grant success.
 
-Structured review summaries are wakeup signals only. Their JSON state, visible
-`Completed` label, `updated_at`, and reactions never grant a passing verdict.
-An update to a summary created before the latest request still wakes the gate;
-it then fetches current receipt/formal evidence and actual review threads. A
-summary alone leaves the gate pending. This keeps the approval contract tied to
-native evidence with existing head and request binding, without a second verdict
-model that could conflict with formal review severity.
+Structured summaries also provide independent machine evidence under a closed
+version 1 schema. Only the official bot's full-current-head `code_review` with
+`status: "completed"` and both finding flags exactly `false` is affirmative.
+`security_review` must either be entirely `null` or satisfy the same exact-head
+completed/false/false contract. Both objects and their four fields are required;
+extra fields, duplicate keys, malformed JSON, unknown markers and versions fail
+closed. The summary's update must follow the current trusted request (same-second
+ordering uses comment IDs). A newer pending, malformed, wrong-head or negative
+summary supersedes old clean state; ambiguous equal-time state fails closed.
+
+This deliberately upgrades structured state from a wakeup-only signal to a
+strictly validated verdict. Headings, thumbs-up reactions and prose never prove
+completion. An unfamiliar single-line closing stays pending until a strictly newer
+affirmative machine summary supersedes it. A later or equal-time unfamiliar
+receipt requires a fresh summary. Malformed receipts,
+contradictory prose and duplicate metadata cannot be rescued by structured state.
+The legacy receipt parser retains its strict fallback for already-known formats.
 
 All unresolved review threads block success, including threads on earlier heads.
 A new request cannot discard a current-head negative formal review. P0–P2
@@ -89,12 +99,10 @@ coalescing, so a run that finished before marker publication cannot count as
 evaluating the new request. The gate checks the head again after fetching evidence so a dispatch
 cannot publish success after a concurrent push.
 
-When installing this routing update, the proposed scripts are not yet trusted.
-After a real native receipt or formal review arrives for the exact PR head,
-rerun its existing `pull_request` Codex Review workflow through the normal
-Actions rerun API/CLI if the old comment filter did not wake it. That workflow
-still executes the default-branch gate, whose parser already accepts native
-receipt prefixes. This preserves the trust boundary and produces a genuine
-review-backed result for the installation PR; it does not execute proposed
-scripts with write permission, fabricate a check, or require changing settings.
-After merge, comment events use the updated default-branch routing automatically.
+When installing this contract upgrade, proposed scripts are not yet trusted.
+The existing default-branch gate still requires its accepted legacy receipt or
+native formal review. Request genuine review for the exact PR head and rerun the
+existing Actions gate if necessary. A new closing plus structured state cannot
+make the old parser accept evidence it does not support. Do not execute proposed
+scripts with write permission, fabricate a check, or bypass a failed gate. After
+merge, subsequent reviews use the upgraded trusted contract automatically.
