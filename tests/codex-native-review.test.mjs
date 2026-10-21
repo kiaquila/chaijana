@@ -246,7 +246,7 @@ test("only newer structured proof supersedes an unfamiliar closing", () => {
 test("latest malformed, negative or ambiguous summary supersedes clean state", () => {
   const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
   const clean = comment(summary());
-  for (const body of ["\uFEFF" + summary().replace(/^<!--/, "    <!--"), "\uFEFF" + summary().replace(/^<!--/, "\t<!--"), summary().replaceAll("codex-", "CODEX-"), summary().replaceAll("codex-", "CoDeX-"), summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
+  for (const body of [summary().replace("Manual request", "Do not merge"), summary().replace("Manual request", "Do **not** merge"), "<!-- TODO -->\n<!-- codex-review-state:v1 {broken} -->", summary().replace(/^(\| 📝 \*\*Code Review\*\*.*)$/m, "```html\n$1\n```"), "\uFEFF" + summary().replace(/^<!--/, "    <!--"), "\uFEFF" + summary().replace(/^<!--/, "\t<!--"), summary().replaceAll("codex-", "CODEX-"), summary().replaceAll("codex-", "CoDeX-"), summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
     const invalid = { ...comment(body), id: 1 };
     assert.equal(run([clean, invalid]), "pending", body);
     assert.equal(run([invalid, clean]), "pending", body);
@@ -427,7 +427,7 @@ test("same-head repeated requests retain typed findings until matching newer mac
       const source = section === "security_review" ? withSecurityProof(summary()) : summary();
       const body = source.replace(new RegExp('("' + section + '":\\{[^}]*"' + field + '":)(?:false|null)'), '$1true');
       const encodedNegative = body.match(/codex-review-state:v1 (\{[^\r\n]*\}) -->/)[1];
-      for (const formattedBody of [body + "\n<!-- codex-review-state:v1 {} -->", body + "\n<!-- codex-unknown -->", body + "\n<!-- CODEX-unknown -->", body + "\n<!-- CoDeX-unknown -->", body + "\n> ```html\n> <!-- codex-review-state:v1 {} -->\n> ```", body + "\n> > ```html\n> > <!-- codex-review-state:v1 {} -->\n> > ```", body + "\n```html\n<!-- codex-review-state:v1 example -->\n```", body + "\n~~~html\n<!-- codex-pull-request-review-summary -->\n~~~", body + "\n    <!-- codex-review-state:v1 example -->", body + "\n\t<!-- codex-pull-request-review-summary -->", body + "\nThe codex-review-state: parser has a defect.", "<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
+      for (const formattedBody of [body + "\nOrdinary **Code Review** presentation.", body + "\n> ```html\n> " + body.match(/^\| 📝.*$/m)[0] + "\n> ```", body.replace("## Codex Review Summary", "  ## Codex Review Summary"), body + "\n<!-- codex-review-state:v1 {} -->", body + "\n<!-- codex-unknown -->", body + "\n<!-- CODEX-unknown -->", body + "\n<!-- CoDeX-unknown -->", body + "\n> ```html\n> <!-- codex-review-state:v1 {} -->\n> ```", body + "\n> > ```html\n> > <!-- codex-review-state:v1 {} -->\n> > ```", body + "\n```html\n<!-- codex-review-state:v1 example -->\n```", body + "\n~~~html\n<!-- codex-pull-request-review-summary -->\n~~~", body + "\n    <!-- codex-review-state:v1 example -->", body + "\n\t<!-- codex-pull-request-review-summary -->", body + "\nThe codex-review-state: parser has a defect.", "<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
         const formatted = comment(formattedBody);
         assert.equal(runGate({ comments: [formatted, answer], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
         assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [formatted, answer], reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "valid typed historical findings survive JSON whitespace and unrelated HTML comments");
@@ -445,6 +445,11 @@ test("same-head repeated requests retain typed findings until matching newer mac
       }
       {
         const ownLabel = section === "code_review" ? "Code Review" : "Security Review";
+        const fenced = priorClean.body.split("\n").map((line) => line.includes("**" + ownLabel + "**") ? "```html\n" + line + "\n```" : line).join("\n");
+        comments.push({ ...priorClean, body: fenced });
+        assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1, "a fenced completion row cannot clear a finding");
+        assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "a fenced completion row cannot clear a finding");
+        comments.pop();
         const mismatched = priorClean.body.split("\n").map((line) => line.includes("**" + ownLabel + "**") ? line.replace(/`[a-f0-9]{7,40}`/, "`fffffff`") : line).join("\n");
         comments.push({ ...priorClean, body: mismatched });
         assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "own-section row SHA must match typed current head");
@@ -518,6 +523,10 @@ test("same-head repeated requests retain typed findings until matching newer mac
       assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
       comments[0].updated_at = "2026-10-16T01:00:00Z";
       assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", "unrelated summary edits cannot renew an older section finding");
+      for (const visibleNegative of ["Found P1 issues.", "Security review failed."]) {
+        const edited = { ...comments[0], body: comments[0].body + "\n" + visibleNegative };
+        assert.equal(runGate({ comments: [edited, ...comments.slice(1)], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1, "new visible negative evidence uses update time");
+      }
       if (section === "code_review") {
         const original = comments[0].body;
         const encoded = original.match(/codex-review-state:v1 (\{[^\r\n]*\}) -->/)[1];
@@ -539,7 +548,10 @@ test("historical malformed and foreign-head state cannot become persistent findi
   const answer = { ...comment(receipt), created_at: "2026-10-15T23:00:00Z", updated_at: "2026-10-15T23:00:00Z" };
   const negative = summary().replace('"has_any_findings":false', '"has_any_findings":true');
   const securityNegative = withSecurityProof(summary()).replace(/("security_review":\{[^}]*"has_any_findings":)false/, "$1true");
-  for (const body of ["\uFEFF" + negative.replace(/^<!--/, "    <!--"), "\uFEFF" + negative.replace(/^<!--/, "\t<!--"), negative.replace(/^<!--/gm, "    <!--"), negative.replace(/^<!--/gm, "\t<!--"), negative.replace(/^(<!-- codex-review-state:)/m, "    $1"), "```json\n" + negative + "\n```", negative.split("\n").map((line) => "> " + line).join("\n"), securityNegative.replace(/^\| 🛡️ \*\*Security Review\*\*.*$/m, ""), securityNegative.replace(/(🛡️ \*\*Security Review\*\*.*datetime=")[^"]+/, "$1invalid"), negative.replace('state:v1', 'state:v2'), negative.replace('"code_review":', '"code_review":broken'), negative.replace('"code_review":', '"code_review":{},"code_review":'), negative.replace("## Codex Review Summary", "<!-- codex-unknown -->\n## Codex Review Summary"), negative.replace("## Codex Review Summary", "<!-- CODEX-unknown -->\n## Codex Review Summary"), negative.replace("## Codex Review Summary", "<!-- CoDeX-unknown -->\n## Codex Review Summary"), negative.replaceAll(head, "f".repeat(40)).replaceAll(head.slice(0, 7), "f".repeat(7))]) {
+  for (const body of [securityNegative.replace(/^\| 🛡️ \*\*Security Review\*\*.*$/m, ""), securityNegative.replace(/(🛡️ \*\*Security Review\*\*.*datetime=")[^"]+/, "$1invalid")]) {
+    assert.equal(runGate({ comments: [comment(body), answer], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1, "typed negative retains authority with an invalid visual clock");
+  }
+  for (const body of ["\uFEFF" + negative.replace(/^<!--/, "    <!--"), "\uFEFF" + negative.replace(/^<!--/, "\t<!--"), negative.replace(/^<!--/gm, "    <!--"), negative.replace(/^<!--/gm, "\t<!--"), negative.replace(/^(<!-- codex-review-state:)/m, "    $1"), "```json\n" + negative + "\n```", negative.split("\n").map((line) => "> " + line).join("\n"), negative.replace('state:v1', 'state:v2'), negative.replace('"code_review":', '"code_review":broken'), negative.replace('"code_review":', '"code_review":{},"code_review":'), negative.replace("## Codex Review Summary", "<!-- codex-unknown -->\n## Codex Review Summary"), negative.replace("## Codex Review Summary", "<!-- CODEX-unknown -->\n## Codex Review Summary"), negative.replace("## Codex Review Summary", "<!-- CoDeX-unknown -->\n## Codex Review Summary"), negative.replaceAll(head, "f".repeat(40)).replaceAll(head.slice(0, 7), "f".repeat(7))]) {
     const comments = [comment(body), answer];
     assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", body);
     assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
