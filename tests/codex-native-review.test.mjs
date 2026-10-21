@@ -625,3 +625,15 @@ test("unrecognized uppercase unfamiliar receipts do not acquire new grammar", ()
   const later = { ...comment(summary().replaceAll(reviewedAt, "2026-10-15T22:00:00Z")), updated_at: "2026-10-15T22:00:00Z" };
   assert.equal(runGate({ comments: [opaque, later] }).status, 1);
 });
+
+
+test("validated reference definitions remain non-rendered while code and invalid text stay visible", () => {
+  for (const suffix of ["\n[doc]:https://example.test/P1", "\n[doc]:\n  https://example.test/P1"]) {
+    const state = comment(summary() + suffix);
+    assert.equal(runGate({ comments: [state] }).status, 0, suffix);
+  }
+  for (const suffix of ["\n[safe\n\nlabel](P1)", "\n`[doc]:https://example.test/P1`", "\n[doc]:\n\nhttps://example.test/P1"]) {
+    const state = comment(summary() + suffix);
+    assert.equal(runGate({ comments: [state] }).status, 1, suffix);
+  }
+});
