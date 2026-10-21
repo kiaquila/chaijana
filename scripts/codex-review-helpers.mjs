@@ -135,8 +135,16 @@ export function extractCodexPriority(body) {
   return match ? Number(match[1]) : null;
 }
 
+// Normalize only human-visible negative evidence; protocol and clocks stay raw.
+function visibleCodexReviewText(value) {
+  return String(value || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, digits) => {
+    const point = digits[0].toLowerCase() === "x" ? parseInt(digits.slice(1), 16) : parseInt(digits, 10);
+    return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : entity;
+  }).replace(/&nbsp;/gi, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_~`]/g, "");
+}
+
 export function containsBlockingCodexSeverity(body) {
-  return /\bP[0-2]\b/i.test(String(body || ""));
+  return /\bP[0-2]\b/i.test(visibleCodexReviewText(body));
 }
 
 export function classifyCodexNativeReview(review, reviewComments = [], headSha) {
@@ -180,7 +188,7 @@ export function isCodexReviewSignal(body) {
 }
 
 function hasConflictingCodexVerdict(body) {
-  return /\b(?:found (?:any )?(?:issues|findings)|changes requested|needs? changes|unresolved findings|review (?:pending|in progress|failed)|issues? remain|not (?:approved|clean)|cannot approve|but|however|except|critical|blocker|regression|bugs?)\b/i.test(body);
+  return /\b(?:found (?:any )?(?:issues|findings)|changes requested|needs? changes|unresolved findings|review (?:pending|in progress|failed)|issues? remain|not (?:approved|clean)|cannot approve|but|however|except|critical|blocker|regression|bugs?)\b/i.test(visibleCodexReviewText(body));
 }
 
 function isCommentAfterRequest(comment, requestedAt, sourceCommentId) {
@@ -214,6 +222,8 @@ function codeReviewCompletedAt(body, headSha, section = "code_review") {
   const rows = [...body.matchAll(/^\| 📝 \*\*Code Review\*\* \| ✅ \*\*Completed\*\* <relative-time datetime="([^"]+)">([^<]+)<\/relative-time> \| `([a-f0-9]{7,40})` \| [^|\r\n]+ \|$/gm)];
   if (rows.length !== 1 || (body.match(/\*\*Code Review\*\*/g) || []).length !== 1) return NaN;
   if (isProtocolCodeExample(body, rows[0].index)) return NaN;
+  const preceding = body.slice(0, rows[0].index);
+  if (preceding.lastIndexOf("<!--") > preceding.lastIndexOf("-->")) return NaN;
   const [, timestamp, visibleTime, sha] = rows[0];
   if (timestamp !== visibleTime || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(timestamp) || !headSha.startsWith(sha)) return NaN;
   const completed = Date.parse(timestamp);
@@ -259,7 +269,7 @@ export function isAffirmativeCodexReviewState(comment, headSha, requestedAt, req
       /Codex Review:|\*\*Reviewed commit:|\bP[0-2]\b/i.test(body)) return false;
   const presentation = body.slice(match[0].length).replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "");
   if (!/^(?:[ \t]*\r?\n)* {0,3}## Codex Review Summary\b/.test(presentation) ||
-      /<details>|<summary>|\b(?:found|unresolved|issues?|findings?|failed|failure|running|pending|cancelled|incomplete|in.progress|not.completed|changes.requested|security.concerns?|do.not.merge)\b/i.test(presentation.replaceAll("**", "").replaceAll("&nbsp;", " "))) return false;
+      /<details>|<summary>|\b(?:found|unresolved|issues?|findings?|failed|failure|running|pending|cancelled|incomplete|in.progress|not.completed|changes.requested|security.concerns?|do.not.merge|P[0-2])\b/i.test(visibleCodexReviewText(presentation))) return false;
   if ([...presentation.matchAll(/\b[a-f0-9]{7,40}\b/gi)].some(([sha]) => !headSha.startsWith(sha))) return false;
   const observed = Date.parse(comment.updated_at || comment.created_at || "");
   const requested = Date.parse(requestedAt || "");
@@ -342,7 +352,7 @@ function isSectionClearingState(comment, section, headSha) {
   // Global prose and unvalidated rows remain ambiguous vetoes.
   const severityBody = state[otherSection].status === "completed"
     ? body.split("\n").filter((line) => !line.startsWith(otherPrefix)).join("\n") : body;
-  if (/\bP[0-2]\b/i.test(severityBody)) return false;
+  if (/\bP[0-2]\b/i.test(visibleCodexReviewText(severityBody))) return false;
   const otherRows = body.split("\n").filter((line) => line.includes("**" + other + "**"));
   if (otherRows.some((line) => !line.startsWith(otherPrefix))) return false;
   if (otherRows.length && state[otherSection].status !== "completed") {
@@ -361,7 +371,7 @@ function isSectionClearingState(comment, section, headSha) {
 
 function findingCompletedAt(comment, section, headSha) {
   const presentation = String(comment.body || "").replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "");
-  if (/\b(?:P[0-2]|failed|failure|do.not.merge)\b/i.test(presentation.replaceAll("**", "").replaceAll("&nbsp;", " "))) return Date.parse(comment.updated_at || comment.created_at || "");
+  if (/\b(?:P[0-2]|failed|failure|do.not.merge)\b/i.test(visibleCodexReviewText(presentation))) return Date.parse(comment.updated_at || comment.created_at || "");
   const completed = codeReviewCompletedAt(String(comment.body || ""), headSha, section);
   const observed = Date.parse(comment.updated_at || comment.created_at || "");
   return Number.isFinite(completed) && completed <= observed + 999 ? completed : observed;
