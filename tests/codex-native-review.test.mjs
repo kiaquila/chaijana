@@ -426,7 +426,7 @@ test("same-head repeated requests retain typed findings until matching newer mac
       const source = section === "security_review" ? withSecurityProof(summary()) : summary();
       const body = source.replace(new RegExp('("' + section + '":\\{[^}]*"' + field + '":)(?:false|null)'), '$1true');
       const encodedNegative = body.match(/codex-review-state:v1 (\{[^\r\n]*\}) -->/)[1];
-      for (const formattedBody of [body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
+      for (const formattedBody of ["<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
         const formatted = comment(formattedBody);
         assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [formatted, answer], reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "valid typed historical findings survive JSON whitespace and unrelated HTML comments");
         assert.equal(runGate({ comments: [formatted, answer], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
@@ -516,7 +516,7 @@ test("historical malformed and foreign-head state cannot become persistent findi
   const answer = { ...comment(receipt), created_at: "2026-10-15T23:00:00Z", updated_at: "2026-10-15T23:00:00Z" };
   const negative = summary().replace('"has_any_findings":false', '"has_any_findings":true');
   const securityNegative = withSecurityProof(summary()).replace(/("security_review":\{[^}]*"has_any_findings":)false/, "$1true");
-  for (const body of [securityNegative.replace(/^\| 🛡️ \*\*Security Review\*\*.*$/m, ""), securityNegative.replace(/(🛡️ \*\*Security Review\*\*.*datetime=")[^"]+/, "$1invalid"), negative.replace('state:v1', 'state:v2'), negative.replace('"code_review":', '"code_review":broken'), negative.replace('"code_review":', '"code_review":{},"code_review":'), negative + "\n<!-- codex-unknown -->", negative.replaceAll(head, "f".repeat(40)).replaceAll(head.slice(0, 7), "f".repeat(7))]) {
+  for (const body of ["```json\n" + negative + "\n```", negative.split("\n").map((line) => "> " + line).join("\n"), securityNegative.replace(/^\| 🛡️ \*\*Security Review\*\*.*$/m, ""), securityNegative.replace(/(🛡️ \*\*Security Review\*\*.*datetime=")[^"]+/, "$1invalid"), negative.replace('state:v1', 'state:v2'), negative.replace('"code_review":', '"code_review":broken'), negative.replace('"code_review":', '"code_review":{},"code_review":'), negative + "\n<!-- codex-unknown -->", negative.replaceAll(head, "f".repeat(40)).replaceAll(head.slice(0, 7), "f".repeat(7))]) {
     const comments = [comment(body), answer];
     assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", body);
     assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
