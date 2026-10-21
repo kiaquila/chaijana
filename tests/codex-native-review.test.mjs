@@ -246,7 +246,7 @@ test("only newer structured proof supersedes an unfamiliar closing", () => {
 test("latest malformed, negative or ambiguous summary supersedes clean state", () => {
   const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
   const clean = comment(summary());
-  for (const body of [summary() + "\nP&#49; blocker", summary() + "\nP&#x31; blocker", summary() + "\nP*1* blocker", summary() + "\nDo&#32;not&#32;merge", summary() + "\nDo&#x20;not&#x20;merge", summary().replace(/^(\| 📝 \*\*Code Review\*\*.*)$/m, "```html\n$1\n````"), summary().replace("Manual request", "Do not merge"), summary().replace("Manual request", "Do not&nbsp;merge"), summary().replace("## Codex Review Summary", "    ## Codex Review Summary"), summary().replace("## Codex Review Summary", "\t## Codex Review Summary"), summary().replace("Manual request", "Do **not** merge"), "<!-- TODO -->\n<!-- codex-review-state:v1 {broken} -->", summary().replace(/^(\| 📝 \*\*Code Review\*\*.*)$/m, "```html\n$1\n```"), "\uFEFF" + summary().replace(/^<!--/, "    <!--"), "\uFEFF" + summary().replace(/^<!--/, "\t<!--"), summary().replaceAll("codex-", "CODEX-"), summary().replaceAll("codex-", "CoDeX-"), summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
+  for (const body of [summary().replace("## Codex Review Summary", "## Codex Review Summary\nDo&MediumSpace;not&MediumSpace;merge"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nDo&hairsp;not&hairsp;merge"), summary().replace("## Codex Review Summary", "\uFEFF    ## Codex Review Summary"), summary().replace("## Codex Review Summary", "<!-- presentation metadata -->    ## Codex Review Summary"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nP&#49; blocker"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nP&#x31; blocker"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nP*1* blocker"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nDo&#32;not&#32;merge"), summary().replace("## Codex Review Summary", "## Codex Review Summary\nDo&#x20;not&#x20;merge"), summary().replace(/^(\| 📝 \*\*Code Review\*\*.*)$/m, "```html\n$1\n````"), summary().replace("Manual request", "Do not merge"), summary().replace("Manual request", "Do not&nbsp;merge"), summary().replace("## Codex Review Summary", "    ## Codex Review Summary"), summary().replace("## Codex Review Summary", "\t## Codex Review Summary"), summary().replace("Manual request", "Do **not** merge"), "<!-- TODO -->\n<!-- codex-review-state:v1 {broken} -->", summary().replace(/^(\| 📝 \*\*Code Review\*\*.*)$/m, "```html\n$1\n```"), "\uFEFF" + summary().replace(/^<!--/, "    <!--"), "\uFEFF" + summary().replace(/^<!--/, "\t<!--"), summary().replaceAll("codex-", "CODEX-"), summary().replaceAll("codex-", "CoDeX-"), summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
     const invalid = { ...comment(body), id: 1 };
     assert.equal(run([clean, invalid]), "pending", body);
     assert.equal(run([invalid, clean]), "pending", body);
@@ -531,6 +531,8 @@ test("same-head repeated requests retain typed findings until matching newer mac
       const ownRowLabel = section === "code_review" ? "Code Review" : "Security Review";
       const hidden = { ...comments[0], body: comments[0].body.split("\n").map((line) => line.includes("**" + ownRowLabel + "**") ? "<!--\n" + line + "\n-->" : line).join("\n") };
       assert.equal(runGate({ comments: [hidden, ...comments.slice(1)], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1, "hidden completion row cannot reuse an older negative clock");
+      const unterminated = { ...hidden, body: hidden.body.replace(/\n-->\n/g, "\n") };
+      assert.equal(runGate({ comments: [unterminated, ...comments.slice(1)], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
       for (const visibleNegative of ["P&#49; blocker", "P*1* blocker", "Do&#32;not&#32;merge", "Found P1 issues.", "Security review failed."]) {
         const edited = { ...comments[0], body: comments[0].body + "\n" + visibleNegative };
         assert.equal(runGate({ comments: [edited, ...comments.slice(1)], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1, "new visible negative evidence uses update time");
@@ -575,4 +577,10 @@ test("unrecognized case-variant receipts remain pending evidence", () => {
     assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comment(receipt), value] })), "pending");
     assert.equal(runGate({ comments: [comment(receipt), value] }).status, 1);
   }
+});
+
+test("unrecognized uppercase unfamiliar receipts do not acquire new grammar", () => {
+  const opaque = comment(receipt.replace(":rocket:", "Swish!").toUpperCase());
+  const later = { ...comment(summary().replaceAll(reviewedAt, "2026-10-15T22:00:00Z")), updated_at: "2026-10-15T22:00:00Z" };
+  assert.equal(runGate({ comments: [opaque, later] }).status, 1);
 });

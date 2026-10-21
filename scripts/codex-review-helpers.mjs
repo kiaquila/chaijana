@@ -140,7 +140,7 @@ function visibleCodexReviewText(value) {
   return String(value || "").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, digits) => {
     const point = digits[0].toLowerCase() === "x" ? parseInt(digits.slice(1), 16) : parseInt(digits, 10);
     return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : entity;
-  }).replace(/&nbsp;/gi, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_~`]/g, "");
+  }).replace(/&(?:Tab|NewLine|nbsp|NonBreakingSpace|ensp|emsp|emsp13|emsp14|numsp|puncsp|thinsp|ThinSpace|hairsp|VeryThinSpace|MediumSpace|ThickSpace);/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_~`]/g, "").replace(/\s+/g, " ");
 }
 
 export function containsBlockingCodexSeverity(body) {
