@@ -426,10 +426,10 @@ test("same-head repeated requests retain typed findings until matching newer mac
       const source = section === "security_review" ? withSecurityProof(summary()) : summary();
       const body = source.replace(new RegExp('("' + section + '":\\{[^}]*"' + field + '":)(?:false|null)'), '$1true');
       const encodedNegative = body.match(/codex-review-state:v1 (\{[^\r\n]*\}) -->/)[1];
-      for (const formattedBody of ["<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
+      for (const formattedBody of [body + "\nThe codex-review-state: parser has a defect.", "<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
         const formatted = comment(formattedBody);
-        assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [formatted, answer], reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "valid typed historical findings survive JSON whitespace and unrelated HTML comments");
         assert.equal(runGate({ comments: [formatted, answer], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
+        assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [formatted, answer], reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "valid typed historical findings survive JSON whitespace and unrelated HTML comments");
       }
       const comments = [comment(body), answer];
       assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", section + field);
