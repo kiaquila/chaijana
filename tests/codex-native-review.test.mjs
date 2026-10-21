@@ -628,11 +628,11 @@ test("unrecognized uppercase unfamiliar receipts do not acquire new grammar", ()
 
 
 test("validated reference definitions remain non-rendered while code and invalid text stay visible", () => {
-  for (const suffix of ["\n\n<span>P&#49</span> blocker", "\n\n`P&#49 blocker`", "\nFound <em>no</em> issues.", "\nFound `0` issues.", "\n\n[doc]:https://example.test/P1", "\n\n[doc]:\n  https://example.test/P1"]) {
+  for (const suffix of ["\n\n[^doc]: P1", "\n<div>\n</span P1>\n</div>", "\n\n<span>P&#49</span> blocker", "\n\n`P&#49 blocker`", "\nFound <em>no</em> issues.", "\nFound `0` issues.", "\n\n[doc]:https://example.test/P1", "\n\n[doc]:\n  https://example.test/P1"]) {
     const state = comment(summary() + suffix);
     assert.equal(runGate({ comments: [state] }).status, 0, suffix);
   }
-  for (const suffix of ["\n<div>\nP&#49 blocker\n</div>", "\n<details><summary>ℹ️ About Codex in GitHub</summary>\nP&#49 blocker\n</details>", "\n[doc]: P1)", "\n[foo[bar]:https://example.test/P1", "\n<div>\n[safe](P1)\n</div>", "\n[safe\n\nlabel](P1)", "\n`[doc]:https://example.test/P1`", "\n[doc]:\n\nhttps://example.test/P1"]) {
+  for (const suffix of ["\n\nnote[^doc]\n\n[^doc]: P1", "\n[safe](" + "(".repeat(33) + "P1" + ")".repeat(33) + ")", "\n\n</span P1>", "\nThere is an issue.", "\n> <div>\n> [safe](P1)\n> </div>", "\n- <div>\n  [safe](P1)\n  </div>", "\nFound 0 code issues and 1 security issue.", "\n<div>\nP&#49 blocker\n</div>", "\n<details><summary>ℹ️ About Codex in GitHub</summary>\nP&#49 blocker\n</details>", "\n[doc]: P1)", "\n[foo[bar]:https://example.test/P1", "\n<div>\n[safe](P1)\n</div>", "\n[safe\n\nlabel](P1)", "\n`[doc]:https://example.test/P1`", "\n[doc]:\n\nhttps://example.test/P1"]) {
     const state = comment(summary() + suffix);
     assert.equal(runGate({ comments: [state] }).status, 1, suffix);
   }
