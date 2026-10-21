@@ -430,6 +430,12 @@ test("same-head repeated requests retain typed findings until matching newer mac
       assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
       const priorClean = { ...comment(withSecurityProof(summary()).replaceAll(reviewedAt, "2026-10-15T21:30:00Z")), updated_at: "2026-10-15T21:30:00Z" };
       assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [comments[0], priorClean], requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "historical clean proof alone cannot approve a new request");
+      for (const contradiction of ["P1 regression", "Found issues.", "Security Review failed."]) {
+        comments.push({ ...priorClean, body: priorClean.body.replace("## Codex Review Summary", "## Codex Review Summary\n" + contradiction) });
+        assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "contradictory historical presentation cannot clear findings");
+        assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
+        comments.pop();
+      }
       comments.push(priorClean);
       assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", "a repeated request does not resurrect a finding already cleared before it");
       assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
