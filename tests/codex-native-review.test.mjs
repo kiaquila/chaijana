@@ -427,7 +427,7 @@ test("same-head repeated requests retain typed findings until matching newer mac
       const source = section === "security_review" ? withSecurityProof(summary()) : summary();
       const body = source.replace(new RegExp('("' + section + '":\\{[^}]*"' + field + '":)(?:false|null)'), '$1true');
       const encodedNegative = body.match(/codex-review-state:v1 (\{[^\r\n]*\}) -->/)[1];
-      for (const formattedBody of [body + "\nThe codex-review-state: parser has a defect.", "<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
+      for (const formattedBody of [body + "\n    <!-- codex-review-state:v1 example -->", body + "\n\t<!-- codex-pull-request-review-summary -->", body + "\nThe codex-review-state: parser has a defect.", "<!-- TODO -->\n" + body, body.replace(encodedNegative, JSON.stringify(JSON.parse(encodedNegative), null, 2)), body + "\n<!-- TODO -->", body.replace("<!-- codex-review-state:", "<!-- TODO -->\n<!-- codex-review-state:")]) {
         const formatted = comment(formattedBody);
         assert.equal(runGate({ comments: [formatted, answer], reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
         assert.equal(evaluateCodexReviewEvidence(evidence({ comments: [formatted, answer], reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "valid typed historical findings survive JSON whitespace and unrelated HTML comments");
@@ -481,6 +481,18 @@ test("same-head repeated requests retain typed findings until matching newer mac
         comments.push(partial);
         assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", "valid section-specific clearing survives a repeated request");
         assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
+        comments.pop();
+        if (status === "running") {
+          const runningRow = priorClean.body.split("\n").find((line) => line.includes("**" + label + "**")).replace("✅ **Completed** ", "🔄 **Running** since ");
+          comments.push({ ...partial, body: partial.body + "\n" + runningRow });
+          assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pass", "a canonical running companion row preserves independent clearing");
+          assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 0);
+          comments.pop();
+        }
+        const malformedOther = { ...partial, body: partial.body + "\n| " + (label === "Code Review" ? "📝" : "🛡️") + " **" + label + "** | ⚠️ Do not merge | `" + head.slice(0, 7) + "` | Manual request |" };
+        comments.push(malformedOther);
+        assert.equal(evaluateCodexReviewEvidence(evidence({ comments, reviews, requestMarker: { sourceCommentCreatedAt: repeatedAt, sourceCommentId: 100 } })), "pending", "a noncanonical companion row cannot be discarded during clearing");
+        assert.equal(runGate({ comments, reviews, requestAt: repeatedAt, requestCommentId: 100 }).status, 1);
         comments.pop();
       }
       comments.push({ ...comment(summary().replaceAll(reviewedAt, "2026-10-15T23:30:00Z")), updated_at: "2026-10-15T23:30:00Z" });
