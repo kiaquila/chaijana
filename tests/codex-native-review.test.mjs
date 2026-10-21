@@ -246,7 +246,7 @@ test("only newer structured proof supersedes an unfamiliar closing", () => {
 test("latest malformed, negative or ambiguous summary supersedes clean state", () => {
   const run = (comments) => evaluateCodexReviewEvidence(evidence({ comments }));
   const clean = comment(summary());
-  for (const body of [summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
+  for (const body of [summary().replaceAll("codex-", "CODEX-"), summary().replaceAll("codex-", "CoDeX-"), summary().replace(/^<!--/gm, "    <!--"), summary().replace(/^<!--/gm, "\t<!--"), summary().replace(/^(<!-- codex-review-state:)/m, "    $1"), summary().replace("state:v1", "state:v2"), summary().replace('"completed"', '"pending"'), summary().replace('"commit_sha":"', '"commit_sha":"f'), summary() + "\nP0: blocker", summary() + "\n**Reviewed commit:** `abcdef0123`", summary().replace('"status":"completed"', '"status":"completed","status":"completed"')]) {
     const invalid = { ...comment(body), id: 1 };
     assert.equal(run([clean, invalid]), "pending", body);
     assert.equal(run([invalid, clean]), "pending", body);
