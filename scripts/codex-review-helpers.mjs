@@ -137,7 +137,9 @@ export function extractCodexPriority(body) {
 
 // HTML5 named entities whose expansion is whitespace or Unicode format text.
 function isEscapedMarkdownStart(text, index) {
-  return ((text.slice(0, index).match(/\\+$/)?.[0].length || 0) % 2) === 1;
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
 }
 
 // Code contexts display link syntax literally; protect their opening bracket
@@ -195,21 +197,33 @@ function stripMarkdownContainers(text, preserveBoundaries = false) {
   }).join("\n");
 }
 
+function nextEqualTickRuns(ticks) {
+  const nextByLength = new Map();
+  const successors = new Array(ticks.length);
+  for (let index = ticks.length - 1; index >= 0; index -= 1) {
+    const length = ticks[index][0].length;
+    successors[index] = nextByLength.get(length);
+    nextByLength.set(length, ticks[index]);
+  }
+  return successors;
+}
+
 // CommonMark delimiter runs: flanking, intraword underscores, and rule of three.
 function activeMarkdownEmphasis(text) {
   const removed = new Set();
   const runs = [];
   const whitespace = (value) => !value || /\s/u.test(value);
   const punctuation = (value) => !!value && /[\p{P}\p{S}]/u.test(value);
-  const escaped = (index) => ((text.slice(0, index).match(/\\+$/)?.[0].length || 0) % 2) === 1;
+  const escaped = (index) => isEscapedMarkdownStart(text, index);
   // Matched code-span delimiters disappear; their literal content is protected
   // by the existing code-context stage before this projection.
   const ticks = [...text.matchAll(/`+/g)];
+  const nextTicks = nextEqualTickRuns(ticks);
   let consumed = 0;
   for (let i = 0; i < ticks.length; i += 1) {
     const start = ticks[i];
     if (start.index < consumed || escaped(start.index)) continue;
-    const end = ticks.slice(i + 1).find((run) => run[0].length === start[0].length);
+    const end = nextTicks[i];
     if (!end) continue;
     for (let j = 0; j < start[0].length; j += 1) { removed.add(start.index + j); removed.add(end.index + j); }
     consumed = end.index + end[0].length;
@@ -254,10 +268,11 @@ function preserveLiteralMarkdownLinks(text) {
   const spans = [];
   let consumed = 0;
   const ticks = [...text.matchAll(/`+/g)];
+  const nextTicks = nextEqualTickRuns(ticks);
   for (let i = 0; i < ticks.length; i += 1) {
     const start = ticks[i];
     if (start.index < consumed || isEscapedMarkdownStart(text, start.index)) continue;
-    const end = ticks.slice(i + 1).find((entry) => entry[0].length === start[0].length);
+    const end = nextTicks[i];
     if (!end) continue;
     spans.push([start.index, end.index + end[0].length]);
     consumed = end.index + end[0].length;
@@ -885,7 +900,7 @@ function hasPositiveFindingStatement(text) {
         if (/^ +(?:do|does|did) +not +(?:exist|exists|remain|remains) *$/iu.test(tail)) return false;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated) +$/iu.test(before)) return false;
         const recurrence = /\b(?:reappears?|reappeared|recurs?|recurred|reopens?|reopened|found +again|(?:still +)?(?:persists?|remains?|exists?))\b/iu.test(tail) && !/\b(?:not|never) +(?:reappear|reappeared|recur|recurred|reopen|reopened|persist|remain|exist)\b/iu.test(tail);
-        if (/\b(?:resolves|fixes|addresses|clears|removes|closes|eliminates) +(?:a|an) +/iu.test(modifiers) && !recurrence) return false;
+        if (/\b(?:resolves?|fix(?:es)?|address(?:es)?|clears?|removes?|closes?|eliminates?|prevents?|avoids?|mitigates?) +(?:a|an) +/iu.test(modifiers) && !recurrence && !tail.trim()) return false;
         const obligation = /\b(?:can|could|may|might|will|would|must|should) +(?:(?:be|been|being|get|gets|got) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/iu.test(tail);
         if (obligation) return true;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(modifiers) && !recurrence && !/^ +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:can|could|may|might|will|would|must|should) +(?:reappear|recur|reopen)\b/iu.test(tail)) return false;
@@ -898,6 +913,8 @@ function hasPositiveFindingStatement(text) {
       const cardinalPattern = "\\b" + cardinal + " +(?:[\\p{L}-]+ +)*?" + noun;
       if ([...reporting.matchAll(new RegExp(cardinalPattern, "giu"))].some((match) => isAffirmative(match, true))) return true;
       const patterns = [
+        "\\b(?:is|are) +vulnerable +to\\b",
+        "\\bauthentication +(?:can|could|may|might) +be +bypassed\\b",
         "\\b(?:most|every|numerous) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
           "(?<![\\p{L}\\p{N}_] )\\b(?:the +)?(?:(?:critical|security|authentication|code|blocking|high|medium|low|major|minor|unresolved|open|new) +)+" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:(?:is|are|was|were) +[\\p{L}]+|found|[\\p{L}]+ed|[\\p{L}]+s|remains?|exists?)\\b",
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:can|could|may|might|will|would|must|should) +[\\p{L}-]+|[\\p{L}]+s)\\b",
@@ -905,8 +922,9 @@ function hasPositiveFindingStatement(text) {
         "\\b(?:this|that|these|those) +(?:(?:code|security|blocking|critical|high|medium|low|major|minor|unresolved|open|new|resolved|fixed|addressed|cleared|removed|closed|eliminated) +)*" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|[\\p{L}]+s)\\b",
         "\\b(?:this|that|these|those) +(?:is|are|was|were) +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
         "(?<![\\p{L}\\p{N}_] )\\b(?:(?:a|an|one|some|several|multiple) +)?(?:(?!(?:the|this|that|these|those)\\b)[\\p{L}-]+ +)*?" + headingNoun + "(?= *(?::|[–—-]) *[^ \\t])",
-        "\\b(?:found|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
+        "\\b(?:found|introduces|creates|contains|has|[\\p{L}]+ed) +(?:[\\p{L}-]+ +)*?" + noun,
         "\\b[\\p{L}]+s +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
+        "\\b(?:I|we) +[\\p{L}]+ +(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun,
         "(?:\\b(?:a|an|one|some|several|multiple|[0-9]+) +(?:[\\p{L}-]+ +)*?" + noun + "|\\bthe +" + noun + "|(?<![\\p{L}\\p{N}_] )" + noun + ")" + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
         "\\bthere +(?:still +)?(?:is|are) +(?:[\\p{L}-]+ +)*?" + noun,
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were) +[\\p{L}-]+|(?!(?:is|was|has)\\b)[\\p{L}]+s)\\b",
