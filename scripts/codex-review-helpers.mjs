@@ -230,18 +230,22 @@ function activeMarkdownEmphasis(text) {
   }
   for (const match of text.matchAll(/\*+|_+|~{2,}/g)) {
     if (escaped(match.index)) continue;
-    const before = [...text.slice(0, match.index)].at(-1) || "";
-    const after = [...text.slice(match.index + match[0].length)][0] || "";
+    const beforeIndex = match.index - (match.index >= 2 && /[\uDC00-\uDFFF]/.test(text[match.index - 1]) && /[\uD800-\uDBFF]/.test(text[match.index - 2]) ? 2 : 1);
+    const before = beforeIndex >= 0 ? String.fromCodePoint(text.codePointAt(beforeIndex)) : "";
+    const afterIndex = match.index + match[0].length;
+    const after = afterIndex < text.length ? String.fromCodePoint(text.codePointAt(afterIndex)) : "";
     const left = !whitespace(after) && (!punctuation(after) || whitespace(before) || punctuation(before));
     const right = !whitespace(before) && (!punctuation(before) || whitespace(after) || punctuation(after));
     runs.push({ character: match[0][0], start: match.index, length: match[0].length, usedOpen: 0, usedClose: 0,
       open: match[0][0] === "_" ? left && (!right || punctuation(before)) : left,
       close: match[0][0] === "_" ? right && (!left || punctuation(after)) : right });
   }
+  const eligibleOpeners = new Map();
   for (let closeIndex = 0; closeIndex < runs.length; closeIndex += 1) {
     const closer = runs[closeIndex];
-    if (!closer.close) continue;
-    for (let openIndex = closeIndex - 1; openIndex >= 0 && closer.length - closer.usedClose >= (closer.character === "~" ? 2 : 1); openIndex -= 1) {
+    const candidates = eligibleOpeners.get(closer.character) || [];
+    if (closer.close) for (let candidate = candidates.length - 1; candidate >= 0 && closer.length - closer.usedClose >= (closer.character === "~" ? 2 : 1); candidate -= 1) {
+      const openIndex = candidates[candidate];
       const opener = runs[openIndex];
       if (!opener.open || opener.character !== closer.character || /\r?\n[ \t\f\v]*\r?\n/.test(text.slice(opener.start, closer.start))) continue;
       let availableOpen = opener.length - opener.usedOpen - opener.usedClose;
@@ -259,6 +263,10 @@ function activeMarkdownEmphasis(text) {
         for (let nested = openIndex + 1; nested < closeIndex; nested += 1) { runs[nested].open = false; runs[nested].close = false; }
         availableOpen -= count; availableClose -= count;
       }
+    }
+    if (closer.open) {
+      candidates.push(closeIndex);
+      eligibleOpeners.set(closer.character, candidates);
     }
   }
   return text.split("").map((character, index) => removed.has(index) ? "" : character).join("");
@@ -900,11 +908,15 @@ function hasPositiveFindingStatement(text) {
         if (/^ +(?:do|does|did) +not +(?:exist|exists|remain|remains) *$/iu.test(tail)) return false;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated) +$/iu.test(before)) return false;
         const recurrence = /\b(?:reappears?|reappeared|recurs?|recurred|reopens?|reopened|found +again|(?:still +)?(?:persists?|remains?|exists?))\b/iu.test(tail) && !/\b(?:not|never) +(?:reappear|reappeared|recur|recurred|reopen|reopened|persist|remain|exist)\b/iu.test(tail);
+        // Remediation compounds stay neutral unless their own state is reaffirmed.
+        if (/^ +fix(?:es)?\b/iu.test(tail) && !recurrence) return false;
+        // A mention is informational only when its own finding is not reaffirmed.
+        if (/\b(?:mention(?:s|ed|ing)?|discuss(?:es|ed|ing)?) +/iu.test(modifiers) && !recurrence) return false;
         if (/\b(?:resolves?|fix(?:es)?|address(?:es)?|clears?|removes?|closes?|eliminates?|prevents?|avoids?|mitigates?) +(?:a|an) +/iu.test(modifiers) && !recurrence && !tail.trim()) return false;
         const obligation = /\b(?:can|could|may|might|will|would|must|should) +(?:(?:be|been|being|get|gets|got) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/iu.test(tail);
         if (obligation) return true;
         if (/\b(?:resolved|fixed|addressed|cleared|removed|closed|eliminated)\b/i.test(modifiers) && !recurrence && !/^ +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting) +)*(?:can|could|may|might|will|would|must|should) +(?:reappear|recur|reopen)\b/iu.test(tail)) return false;
-        if (/^(?: +| *(?::|[–—-]) *)(?:(?:that|which) +)?(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|now|already) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated|harmless|benign) *$/iu.test(tail)) return false;
+        if (/^(?: +| *(?::|[–—-]) *)(?:(?:that|which) +)?(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|now|already|remains?) +)*(?:resolved|fixed|addressed|cleared|removed|closed|eliminated|harmless|benign) *$/iu.test(tail)) return false;
           return true;
       };
       const counts = [...clause.matchAll(new RegExp("(?<![\\p{L}\\p{N}_])[*_~`]*([0-9]+(?:,[0-9]{3})*)[*_~`]* +(?:[\\p{L}-]+ +)*?" + noun, "giu"))];
@@ -915,6 +927,7 @@ function hasPositiveFindingStatement(text) {
       const patterns = [
         "\\b(?:is|are) +vulnerable +to\\b",
         "\\bauthentication +(?:can|could|may|might) +be +bypassed\\b",
+        "\\b(?:(?:no +(?:(?!(?:is|are|was|were|has|have|had|can|could|may|might)\\b)[\\p{L}-]+ +)*?)?[\\p{L}-]+ +)?(?:(?:can|could|may|might) +|(?:is|are) +able +to +)bypass +authentication\\b",
         "\\b(?:most|every|numerous) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:found|[\\p{L}]+ed|remains?|exists?)\\b",
           "(?<![\\p{L}\\p{N}_] )\\b(?:the +)?(?:(?:critical|security|authentication|code|blocking|high|medium|low|major|minor|unresolved|open|new) +)+" + noun + " +(?:(?:is|are|was|were|has|have|had|be|been|being|get|gets|got|gotten|getting|still) +)*(?:(?:is|are|was|were) +[\\p{L}]+|found|[\\p{L}]+ed|[\\p{L}]+s|remains?|exists?)\\b",
         "\\b(?:a|an) +(?:[\\p{L}-]+ +)*?" + noun + " +(?:(?:can|could|may|might|will|would|must|should) +[\\p{L}-]+|[\\p{L}]+s)\\b",
@@ -1150,7 +1163,7 @@ export function isAffirmativeCodexReviewState(comment, headSha, requestedAt, req
       /Codex Review:|\*\*Reviewed commit:/i.test(body) || containsBlockingCodexSeverity(body) || hasContradictoryCodexPresentation(body)) return false;
   const presentation = body.slice(match[0].length).replace(/\s*<details>\s*<summary>ℹ️ About Codex in GitHub<\/summary>[\s\S]*<\/details>\s*$/, "");
   if (!/^(?:[ \t]*\r?\n)* {0,3}## Codex Review Summary\b/.test(presentation) ||
-      (/<details>|<summary>/i.test(visibleCodexReviewText(presentation)) || hasContradictoryCodexPresentation(presentation))) return false;
+      hasContradictoryCodexPresentation(presentation)) return false;
   if ([...presentation.matchAll(/\b[a-f0-9]{7,40}\b/gi)].some(([sha]) => !headSha.startsWith(sha))) return false;
   const observed = Date.parse(comment.updated_at || comment.created_at || "");
   const requested = Date.parse(requestedAt || "");
@@ -1267,6 +1280,7 @@ function findingCompletedAt(comment, section, headSha) {
   // malformed rows, and this section's warning remain observation-time evidence.
   if (state?.[other].status === "completed") {
     const otherCompleted = codeReviewCompletedAt(presentation, state[other].commit_sha, other);
+    if (!Number.isFinite(otherCompleted) || otherCompleted > observed + 999) return observed;
     if (Number.isFinite(otherCompleted) && otherCompleted <= observed + 999) {
       const prefix = "| " + (other === "code_review" ? "📝" : "🛡️") + " **" + label + "** | ";
       const rows = presentation.split("\n");
