@@ -6,7 +6,7 @@
     "node": ">=22.18.0"
   },
   "overrides": {
-    "undici": "7.29.1",
+    "undici": "7.30.1",
     "sharp": "0.35.5",
     "fflate": "0.7.5",
     "image-size": "$image-size"
@@ -23,7 +23,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .wrangler"
   },
   "dependencies": {
-    "next": "16.4.0",
+    "next": "16.4.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
@@ -35,7 +35,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "@vitejs/plugin-rsc": "0.5.38",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.1",
     "image-size": "file:vendor/image-size",
     "react-server-dom-webpack": "19.3.1",
     "typescript": "5.9.3",
